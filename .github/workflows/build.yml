@@ -44,8 +44,23 @@ jobs:
                   applicationId = "com.waqas.mj"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 1
-                  versionName = "1.0"
+                  versionCode = 2
+                  versionName = "1.1"
+              }
+
+              // One fixed key for every build, so a new APK installs over the old one.
+              signingConfigs {
+                  create("mj") {
+                      storeFile = file("mj.keystore")
+                      storePassword = "mjassistant"
+                      keyAlias = "mj"
+                      keyPassword = "mjassistant"
+                  }
+              }
+              buildTypes {
+                  getByName("debug") {
+                      signingConfig = signingConfigs.getByName("mj")
+                  }
               }
 
               compileOptions {
@@ -57,6 +72,10 @@ jobs:
               }
           }
           MJEOF
+          mkdir -p app
+          cat > app/mj.keystore.b64 <<'MJEOF'
+          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
+          MJEOF
           mkdir -p app/src/main
           cat > app/src/main/AndroidManifest.xml <<'MJEOF'
           <?xml version="1.0" encoding="utf-8"?>
@@ -65,8 +84,12 @@ jobs:
               <uses-permission android:name="android.permission.INTERNET" />
               <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
               <uses-permission android:name="android.permission.FLASHLIGHT" />
+              <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
               <queries>
+                  <intent>
+                      <action android:name="android.speech.RecognitionService" />
+                  </intent>
                   <intent>
                       <action android:name="android.intent.action.MAIN" />
                       <category android:name="android.intent.category.LAUNCHER" />
@@ -108,6 +131,1224 @@ jobs:
           mkdir -p app/src/main/java/com/waqas/mj
           cat > app/src/main/java/com/waqas/mj/Brain.kt <<'MJEOF'
           package com.waqas.mj
+
+          import org.json.JSONArray
+          import org.json.JSONObject
+          import java.net.HttpURLConnection
+          import java.net.URL
+
+          /** Asks Gemini for the single next action. Stateless: every call carries the full context. */
+          object Brain {
+
+              const val DEFAULT_MODEL = "gemini-flash-lite-latest"
+
+              private const val SYSTEM = """
+          You are MJ, a fast and reliable assistant that controls an Android phone through an accessibility service.
+          The user may speak English, Urdu, Roman Urdu or Hindi.
+
+          Each turn you get the user's command, the current app, a numbered list of what is on screen, and the actions already taken.
+          Reply with exactly ONE next action as a FLAT JSON object, for example {"action":"tap","id":3} or {"action":"open_app","name":"WhatsApp"}.
+          Always put the needed fields directly in the object. Never leave a needed field out.
+
+          Actions and their fields:
+          - flashlight: on (true/false), seconds (optional; turns on, waits, turns off)
+          - open_app: name
+          - youtube_search: query
+          - web_search: query
+          - call: number (opens the dialer with the number)
+          - volume: direction (up, down, mute, unmute)
+          - tap: id
+          - type: id, text
+          - enter: id (optional; presses the keyboard Enter/Search key)
+          - scroll: direction (up or down), id (optional)
+          - back, home, recents, notifications: no fields
+          - wait: ms (up to 5000)
+          - say: text
+          - done: message, speak
+
+          Rules:
+          1. Prefer direct actions (flashlight, open_app, youtube_search, web_search, call, volume, back, home) over tapping the screen. They are faster and cannot loop.
+          2. Use element ids from the current screen list only. Ids change every turn. tap and type always need an id.
+          3. If the last action says "screen did not change", do NOT repeat it. Try another element, scroll, or a different approach.
+          4. Never repeat the same action more than twice. If you cannot finish, call done and explain why.
+          5. After open_app the screen may still show the old app. If so, use wait with ms 1500 once, then continue.
+          6. Messaging example: open_app WhatsApp, tap the search icon, type the contact name, tap the matching chat, tap the message box, type the message, tap Send, then done.
+          7. After youtube_search or web_search the results page is already open. If the user wants a specific video or result, tap the matching element, then call done.
+          8. Never pay, transfer money, delete data, uninstall or buy anything unless the user explicitly asked for exactly that.
+          9. For plain chat or questions (for example "kia hal ha"), answer with done. Do not use say for that.
+          10. done.message is one short sentence in Roman Urdu (Latin letters) for the screen. done.speak is the SAME sentence written in Hindi Devanagari script, because a Hindi voice will read it aloud. say.text must also be Devanagari.
+          11. Call done as soon as the task is complete.
+          12. Output only the JSON object and nothing else.
+          """
+
+              private val ACTIONS = listOf(
+                  "flashlight", "open_app", "youtube_search", "web_search", "call", "volume",
+                  "tap", "type", "enter", "scroll", "back", "home", "recents", "notifications",
+                  "wait", "say", "done"
+              )
+
+              private class SchemaRejected : RuntimeException()
+
+              private fun schema(): JSONObject {
+                  val props = JSONObject()
+                      .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray(ACTIONS)))
+                      .put("id", JSONObject().put("type", "INTEGER"))
+                      .put("text", JSONObject().put("type", "STRING"))
+                      .put("name", JSONObject().put("type", "STRING"))
+                      .put("query", JSONObject().put("type", "STRING"))
+                      .put("number", JSONObject().put("type", "STRING"))
+                      .put("direction", JSONObject().put("type", "STRING"))
+                      .put("on", JSONObject().put("type", "BOOLEAN"))
+                      .put("seconds", JSONObject().put("type", "INTEGER"))
+                      .put("ms", JSONObject().put("type", "INTEGER"))
+                      .put("message", JSONObject().put("type", "STRING"))
+                      .put("speak", JSONObject().put("type", "STRING"))
+                  return JSONObject()
+                      .put("type", "OBJECT")
+                      .put("properties", props)
+                      .put("required", JSONArray().put("action"))
+              }
+
+              fun decide(
+                  key: String,
+                  model: String,
+                  command: String,
+                  history: List<String>,
+                  snap: ScreenSnapshot
+              ): JSONObject {
+                  val prompt = buildString {
+                      append("USER COMMAND: ").append(command).append("\n\n")
+                      append("CURRENT APP: ").append(snap.pkg).append("\n")
+                      append("SCREEN ELEMENTS:\n").append(snap.text).append("\n")
+                      append("ACTIONS SO FAR:\n")
+                      if (history.isEmpty()) {
+                          append("(none)\n")
+                      } else {
+                          for (h in history.takeLast(8)) append("- ").append(h).append("\n")
+                      }
+                      append("\nReply with the single next action as a flat JSON object.")
+                  }
+                  return try {
+                      call(key, model, prompt, true)
+                  } catch (e: SchemaRejected) {
+                      call(key, model, prompt, false)
+                  }
+              }
+
+              /** Fields of the action, whether the model sent them flat or inside an "args" object. */
+              fun args(reply: JSONObject): JSONObject {
+                  val out = JSONObject()
+                  val keys = reply.keys()
+                  while (keys.hasNext()) {
+                      val k = keys.next()
+                      if (k != "action" && k != "args") out.put(k, reply.get(k))
+                  }
+                  val inner = reply.optJSONObject("args")
+                  if (inner != null) {
+                      val innerKeys = inner.keys()
+                      while (innerKeys.hasNext()) {
+                          val k = innerKeys.next()
+                          out.put(k, inner.get(k))
+                      }
+                  }
+                  return out
+              }
+
+              private fun call(key: String, model: String, prompt: String, useSchema: Boolean): JSONObject {
+                  val gen = JSONObject().put("temperature", 0).put("responseMimeType", "application/json")
+                  if (useSchema) gen.put("responseSchema", schema())
+
+                  val body = JSONObject()
+                      .put(
+                          "systemInstruction",
+                          JSONObject().put("parts", JSONArray().put(JSONObject().put("text", SYSTEM)))
+                      )
+                      .put(
+                          "contents",
+                          JSONArray().put(
+                              JSONObject().put("role", "user")
+                                  .put("parts", JSONArray().put(JSONObject().put("text", prompt)))
+                          )
+                      )
+                      .put("generationConfig", gen)
+
+                  val url = URL("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
+                  val c = url.openConnection() as HttpURLConnection
+                  try {
+                      c.requestMethod = "POST"
+                      c.connectTimeout = 15000
+                      c.readTimeout = 40000
+                      c.doOutput = true
+                      c.setRequestProperty("Content-Type", "application/json")
+                      c.setRequestProperty("x-goog-api-key", key)
+                      c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+
+                      val code = c.responseCode
+                      val stream = if (code in 200..299) c.inputStream else c.errorStream
+                      val text = stream.bufferedReader().use { it.readText() }
+                      if (code !in 200..299) {
+                          if (code == 400 && useSchema && text.contains("schema", ignoreCase = true)) {
+                              throw SchemaRejected()
+                          }
+                          val hint = when (code) {
+                              400 -> "API key ya model ka naam galat ho sakta hai"
+                              404 -> "model ka naam galat hai, gemini-flash-lite-latest try karein"
+                              429 -> "free limit poori, thori der baad try karein"
+                              else -> ""
+                          }
+                          throw RuntimeException("HTTP $code $hint ${text.take(150)}")
+                      }
+                      val out = JSONObject(text)
+                          .getJSONArray("candidates").getJSONObject(0)
+                          .getJSONObject("content").getJSONArray("parts").getJSONObject(0)
+                          .getString("text")
+                      val cleaned = out.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+                      return JSONObject(cleaned)
+                  } finally {
+                      c.disconnect()
+                  }
+              }
+          }
+          MJEOF
+          mkdir -p app/src/main/java/com/waqas/mj
+          cat > app/src/main/java/com/waqas/mj/Device.kt <<'MJEOF'
+          package com.waqas.mj
+
+          import android.content.ActivityNotFoundException
+          import android.content.Context
+          import android.content.Intent
+          import android.hardware.camera2.CameraCharacteristics
+          import android.hardware.camera2.CameraManager
+          import android.media.AudioManager
+          import android.net.Uri
+          import java.net.URLEncoder
+
+          /** Direct phone commands. These never touch the screen, so they are fast and cannot loop. */
+          object Device {
+
+              fun flashlight(ctx: Context, on: Boolean, seconds: Int = 0): String {
+                  return try {
+                      val cm = ctx.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+                      var id: String? = null
+                      for (cid in cm.cameraIdList) {
+                          val c = cm.getCameraCharacteristics(cid)
+                          val hasFlash = c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+                          val back = c.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
+                          if (hasFlash && back) {
+                              id = cid
+                              break
+                          }
+                      }
+                      if (id == null) {
+                          "flashlight not found on this phone"
+                      } else if (on && seconds > 0) {
+                          cm.setTorchMode(id, true)
+                          Thread.sleep(seconds.coerceIn(1, 60) * 1000L)
+                          cm.setTorchMode(id, false)
+                          "flashlight was on for $seconds seconds, now off"
+                      } else {
+                          cm.setTorchMode(id, on)
+                          if (on) "flashlight on" else "flashlight off"
+                      }
+                  } catch (e: Exception) {
+                      "flashlight error: ${e.message}"
+                  }
+              }
+
+              fun openApp(ctx: Context, name: String): String {
+                  val pm = ctx.packageManager
+                  val probe = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                  val apps = pm.queryIntentActivities(probe, 0)
+                  val q = name.lowercase().trim()
+                  if (q.isEmpty()) return "no app name given"
+                  val hit = apps.firstOrNull { it.loadLabel(pm).toString().lowercase() == q }
+                      ?: apps.firstOrNull { it.loadLabel(pm).toString().lowercase().contains(q) }
+                      ?: return "app '$name' not found"
+                  val launch = pm.getLaunchIntentForPackage(hit.activityInfo.packageName)
+                      ?: return "cannot launch ${hit.loadLabel(pm)}"
+                  launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  return try {
+                      ctx.startActivity(launch)
+                      "opened ${hit.loadLabel(pm)}"
+                  } catch (e: Exception) {
+                      "cannot open: ${e.message}"
+                  }
+              }
+
+              fun openUrl(ctx: Context, url: String, pkg: String? = null): String {
+                  val i = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  if (pkg != null) i.setPackage(pkg)
+                  return try {
+                      ctx.startActivity(i)
+                      "opened"
+                  } catch (e: ActivityNotFoundException) {
+                      try {
+                          i.setPackage(null)
+                          ctx.startActivity(i)
+                          "opened in browser"
+                      } catch (e2: Exception) {
+                          "cannot open: ${e2.message}"
+                      }
+                  } catch (e: Exception) {
+                      "cannot open: ${e.message}"
+                  }
+              }
+
+              fun youtubeSearch(ctx: Context, query: String): String {
+                  val url = "https://www.youtube.com/results?search_query=" + URLEncoder.encode(query, "UTF-8")
+                  return openUrl(ctx, url, "com.google.android.youtube") + " (youtube search: $query)"
+              }
+
+              fun webSearch(ctx: Context, query: String): String {
+                  val url = "https://www.google.com/search?q=" + URLEncoder.encode(query, "UTF-8")
+                  return openUrl(ctx, url) + " (web search: $query)"
+              }
+
+              /** Opens the dialer with the number filled in. The user (or a later step) presses call. */
+              fun dial(ctx: Context, number: String): String {
+                  val i = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(number)))
+                      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  return try {
+                      ctx.startActivity(i)
+                      "dialer opened with $number"
+                  } catch (e: Exception) {
+                      "cannot open dialer: ${e.message}"
+                  }
+              }
+
+              fun volume(ctx: Context, direction: String): String {
+                  val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                  val d = when (direction) {
+                      "up" -> AudioManager.ADJUST_RAISE
+                      "down" -> AudioManager.ADJUST_LOWER
+                      "mute" -> AudioManager.ADJUST_MUTE
+                      "unmute" -> AudioManager.ADJUST_UNMUTE
+                      else -> return "bad volume direction '$direction'"
+                  }
+                  am.adjustStreamVolume(AudioManager.STREAM_MUSIC, d, AudioManager.FLAG_SHOW_UI)
+                  return "volume $direction"
+              }
+          }
+          MJEOF
+          mkdir -p app/src/main/java/com/waqas/mj
+          cat > app/src/main/java/com/waqas/mj/MJService.kt <<'MJEOF'
+          package com.waqas.mj
+
+          import android.Manifest
+          import android.accessibilityservice.AccessibilityService
+          import android.accessibilityservice.GestureDescription
+          import android.content.Intent
+          import android.content.pm.PackageManager
+          import android.graphics.Color
+          import android.graphics.Path
+          import android.graphics.PixelFormat
+          import android.graphics.Rect
+          import android.graphics.drawable.GradientDrawable
+          import android.os.Build
+          import android.os.Bundle
+          import android.os.Handler
+          import android.os.Looper
+          import android.speech.RecognitionListener
+          import android.speech.RecognizerIntent
+          import android.speech.SpeechRecognizer
+          import android.speech.tts.TextToSpeech
+          import android.view.Gravity
+          import android.view.MotionEvent
+          import android.view.ViewGroup
+          import android.view.WindowManager
+          import android.view.accessibility.AccessibilityEvent
+          import android.view.accessibility.AccessibilityNodeInfo
+          import android.widget.Button
+          import android.widget.LinearLayout
+          import android.widget.TextView
+          import android.widget.Toast
+          import org.json.JSONObject
+          import java.util.Locale
+          import java.util.concurrent.CountDownLatch
+          import java.util.concurrent.TimeUnit
+          import kotlin.math.abs
+
+          /**
+           * MJ's body: an accessibility service that can read the screen and act on it.
+           *
+           * Reliability rules built in:
+           *  - quick commands (flashlight on/off/for N seconds) run locally, no AI, no screen touching
+           *  - the AI prefers direct phone actions over tapping
+           *  - every screen action is verified: if the screen did not change the AI is told
+           *  - the same action on the same screen twice in a row stops the run (no endless tapping)
+           *  - hard limit of 20 steps, and a STOP button is always on screen while MJ works
+           *  - payment / delete style buttons are blocked unless the user asked for them
+           *
+           * A floating mic bubble lets the user talk to MJ from any screen without opening the app.
+           */
+          class MJService : AccessibilityService() {
+
+              companion object {
+                  @Volatile
+                  var instance: MJService? = null
+                  val logs = ArrayList<String>()
+
+                  @Volatile
+                  var sink: ((String) -> Unit)? = null
+
+                  private val SENSITIVE = listOf(
+                      "pay", "send money", "transfer", "delete", "uninstall",
+                      "purchase", "buy", "erase", "factory reset", "remove account"
+                  )
+              }
+
+              private val ui = Handler(Looper.getMainLooper())
+
+              @Volatile
+              private var cancelled = false
+
+              @Volatile
+              private var running = false
+              private var overlay: LinearLayout? = null
+              private var statusView: TextView? = null
+              private var tts: TextToSpeech? = null
+              private var bubble: TextView? = null
+              private var bubbleBg: GradientDrawable? = null
+              private var recognizer: SpeechRecognizer? = null
+
+              override fun onServiceConnected() {
+                  super.onServiceConnected()
+                  instance = this
+                  tts = TextToSpeech(this) { status ->
+                      if (status == TextToSpeech.SUCCESS) {
+                          try {
+                              val r = tts?.setLanguage(Locale("hi", "IN"))
+                              if (r == TextToSpeech.LANG_MISSING_DATA || r == TextToSpeech.LANG_NOT_SUPPORTED) {
+                                  tts?.setLanguage(Locale.getDefault())
+                              }
+                          } catch (e: Exception) {
+                          }
+                      }
+                  }
+                  refreshBubble()
+                  emit("MJ service ON")
+              }
+
+              override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+
+              override fun onInterrupt() {}
+
+              override fun onUnbind(intent: Intent?): Boolean {
+                  instance = null
+                  cancelled = true
+                  hideBubble()
+                  ui.post {
+                      try {
+                          recognizer?.destroy()
+                      } catch (e: Exception) {
+                      }
+                  }
+                  tts?.shutdown()
+                  return super.onUnbind(intent)
+              }
+
+              // ------------------------------------------------------------------ public
+
+              fun runCommand(cmd: String) {
+                  if (running) {
+                      emit("MJ pehle se kaam kar rahi hai")
+                      return
+                  }
+                  running = true
+                  cancelled = false
+                  Thread {
+                      try {
+                          agent(cmd)
+                      } catch (e: Exception) {
+                          finish("Error: ${e.message}")
+                      } finally {
+                          running = false
+                          hideOverlay()
+                      }
+                  }.start()
+              }
+
+              /** Listens with Android's speech recognizer (no dialog) and runs what it hears. */
+              fun startListening() {
+                  if (running) {
+                      cancelled = true
+                      emit("STOP dabaya")
+                      return
+                  }
+                  if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                      emit("Mic permission nahi hai: MJ app mein '4) Mic permission' dabayein")
+                      ui.post {
+                          Toast.makeText(this, "Mic permission allow karein (MJ app kholein)", Toast.LENGTH_LONG).show()
+                      }
+                      return
+                  }
+                  ui.post {
+                      if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+                          emit("Is phone par speech recognition nahi mila")
+                          return@post
+                      }
+                      try {
+                          recognizer?.destroy()
+                      } catch (e: Exception) {
+                      }
+                      val r = SpeechRecognizer.createSpeechRecognizer(this)
+                      recognizer = r
+                      r.setRecognitionListener(object : RecognitionListener {
+                          override fun onReadyForSpeech(params: Bundle?) {}
+                          override fun onBeginningOfSpeech() {}
+                          override fun onRmsChanged(rmsdB: Float) {}
+                          override fun onBufferReceived(buffer: ByteArray?) {}
+                          override fun onEndOfSpeech() {}
+                          override fun onPartialResults(partialResults: Bundle?) {}
+                          override fun onEvent(eventType: Int, params: Bundle?) {}
+
+                          override fun onError(error: Int) {
+                              setBubble(false)
+                              emit("Suna nahi (mic error $error). Dobara try karein")
+                          }
+
+                          override fun onResults(results: Bundle?) {
+                              setBubble(false)
+                              val t = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                              if (t.isNullOrBlank()) {
+                                  emit("Awaz samajh nahi aayi")
+                              } else {
+                                  runCommand(t)
+                              }
+                          }
+                      })
+                      val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                      i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                      i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
+                      setBubble(true)
+                      Toast.makeText(this, "Boliye...", Toast.LENGTH_SHORT).show()
+                      r.startListening(i)
+                  }
+              }
+
+              fun refreshBubble() {
+                  if (getSharedPreferences("mj", MODE_PRIVATE).getBoolean("bubble", true)) showBubble() else hideBubble()
+              }
+
+              // ------------------------------------------------------------------ the loop
+
+              private fun agent(cmd: String) {
+                  showOverlay()
+                  setStatus("MJ: $cmd")
+                  emit("Command: $cmd")
+
+                  if (fastPath(cmd)) return
+
+                  val prefs = getSharedPreferences("mj", MODE_PRIVATE)
+                  val key = prefs.getString("key", "") ?: ""
+                  val model = (prefs.getString("model", "") ?: "").ifEmpty { Brain.DEFAULT_MODEL }
+                  if (key.isBlank()) {
+                      finish("Pehle app mein Gemini API key save karein")
+                      return
+                  }
+
+                  val history = ArrayList<String>()
+                  var lastSig = ""
+                  var prevHash = 0
+                  var prevUi = false
+
+                  for (step in 1..20) {
+                      if (cancelled) {
+                          finish("Roka gaya (stopped)")
+                          return
+                      }
+                      var root = rootInActiveWindow
+                      if (root == null) {
+                          Thread.sleep(500)
+                          root = rootInActiveWindow
+                      }
+                      val snap = ScreenReader.read(root)
+
+                      if (prevUi && history.isNotEmpty() && snap.hash == prevHash) {
+                          history[history.size - 1] = history.last() + " (screen did not change)"
+                      }
+
+                      val reply = try {
+                          Brain.decide(key, model, cmd, history, snap)
+                      } catch (e: Exception) {
+                          finish("AI error: ${e.message}")
+                          return
+                      }
+                      val action = reply.optString("action")
+                      val args = Brain.args(reply)
+
+                      val sig = action + args.toString() + snap.hash
+                      if (sig == lastSig) {
+                          finish("Atak gayi: wahi action dobara aa raha tha, ruk gayi")
+                          return
+                      }
+                      lastSig = sig
+
+                      emit("Step $step: $action $args")
+                      setStatus("Step $step: $action")
+
+                      if (action == "done") {
+                          val m = args.optString("message", "").ifBlank { "Ho gaya" }
+                          finish(m, args.optString("speak", "").ifBlank { m })
+                          return
+                      }
+
+                      val result = execute(action, args, snap, cmd)
+                      history.add("$action $args -> $result")
+                      prevUi = action == "tap" || action == "type" || action == "scroll" || action == "enter"
+                      prevHash = snap.hash
+                      val settle = when (action) {
+                          "wait" -> 0L
+                          "open_app", "youtube_search", "web_search", "call" -> 1800L
+                          else -> 700L
+                      }
+                      Thread.sleep(settle)
+                  }
+                  finish("Step limit (20) poori ho gayi")
+              }
+
+              /** Simple torch commands skip the AI completely: instant and cannot go wrong. */
+              private fun fastPath(cmd: String): Boolean {
+                  val c = normalize(cmd.lowercase())
+                  val torchWords = listOf(
+                      "flashlight", "flash light", "torch", "tourch",
+                      "ٹارچ", "فلیش", "फ्लैश", "फ़्लैश", "टॉर्च", "टार्च"
+                  )
+                  if (torchWords.none { c.contains(it) }) return false
+
+                  val offRe = Regex("\\boff\\b|band|bujha|بند|آف|بجھا|बंद|बुझा|ऑफ")
+                  val onRe = Regex("\\bon\\b|chalu|jalao|jala|kholo|اون|آن|چالو|جلا|चालू|जला|ऑन")
+                  val secs = Regex("(\\d+)\\s*(sec|second|سیکنڈ|सेकंड|सेकण्ड)")
+                      .find(c)?.groupValues?.get(1)?.toIntOrNull()
+                  val wantOn = onRe.containsMatchIn(c)
+                  val wantOff = offRe.containsMatchIn(c)
+
+                  val result = when {
+                      secs != null && wantOn -> Device.flashlight(this, true, secs)
+                      wantOff && !wantOn -> Device.flashlight(this, false)
+                      wantOn && !wantOff -> Device.flashlight(this, true)
+                      else -> return false
+                  }
+                  val spoken = when {
+                      result.contains("error") || result.contains("not found") -> ""
+                      secs != null -> "हो गया"
+                      wantOff -> "टॉर्च बंद हो गई"
+                      else -> "टॉर्च चालू हो गई"
+                  }
+                  finish(result, spoken)
+                  return true
+              }
+
+              private fun normalize(s: String): String {
+                  val sb = StringBuilder()
+                  for (ch in s) {
+                      sb.append(
+                          when (ch) {
+                              in '٠'..'٩' -> '0' + (ch - '٠')
+                              in '۰'..'۹' -> '0' + (ch - '۰')
+                              else -> ch
+                          }
+                      )
+                  }
+                  return sb.toString()
+              }
+
+              // ------------------------------------------------------------------ actions
+
+              private fun execute(action: String, a: JSONObject, snap: ScreenSnapshot, cmd: String): String {
+                  return when (action) {
+                      "flashlight" -> Device.flashlight(this, a.optBoolean("on", true), a.optInt("seconds", 0))
+                      "open_app" -> Device.openApp(this, a.optString("name"))
+                      "youtube_search" -> Device.youtubeSearch(this, a.optString("query"))
+                      "web_search" -> Device.webSearch(this, a.optString("query"))
+                      "call" -> Device.dial(this, a.optString("number"))
+                      "volume" -> Device.volume(this, a.optString("direction"))
+                      "tap" -> tap(a.optInt("id", -1), snap, cmd)
+                      "type" -> typeText(a.optInt("id", -1), a.optString("text"), snap)
+                      "enter" -> pressEnter(a.optInt("id", -1), snap)
+                      "scroll" -> scroll(a.optString("direction", "down"), a.optInt("id", -1), snap)
+                      "back" -> global(GLOBAL_ACTION_BACK, "back")
+                      "home" -> global(GLOBAL_ACTION_HOME, "home")
+                      "recents" -> global(GLOBAL_ACTION_RECENTS, "recents")
+                      "notifications" -> global(GLOBAL_ACTION_NOTIFICATIONS, "notifications")
+                      "wait" -> {
+                          Thread.sleep(a.optLong("ms", 1000).coerceIn(0L, 5000L))
+                          "waited"
+                      }
+                      "say" -> {
+                          speak(a.optString("text"))
+                          "spoken"
+                      }
+                      else -> "unknown action '$action'"
+                  }
+              }
+
+              private fun global(code: Int, name: String): String =
+                  if (performGlobalAction(code)) name else "$name failed"
+
+              private fun tap(id: Int, snap: ScreenSnapshot, cmd: String): String {
+                  val n = snap.nodes.getOrNull(id) ?: return "bad element id $id (use a number from the screen list)"
+                  val label = (n.text ?: n.contentDescription ?: "").toString().lowercase()
+                  val asked = cmd.lowercase()
+                  if (SENSITIVE.any { label.contains(it) && !asked.contains(it) }) {
+                      return "BLOCKED: '$label' looks sensitive and the user did not ask for it"
+                  }
+                  var t: AccessibilityNodeInfo? = n
+                  while (t != null && !t.isClickable) t = t.parent
+                  if (t != null && t.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "tapped"
+                  val r = Rect()
+                  n.getBoundsInScreen(r)
+                  return if (gestureTap(r.centerX().toFloat(), r.centerY().toFloat())) "tapped by gesture" else "tap failed"
+              }
+
+              private fun gestureTap(x: Float, y: Float): Boolean {
+                  val p = Path()
+                  p.moveTo(x, y)
+                  val g = GestureDescription.Builder()
+                      .addStroke(GestureDescription.StrokeDescription(p, 0, 60))
+                      .build()
+                  val latch = CountDownLatch(1)
+                  var ok = false
+                  dispatchGesture(g, object : AccessibilityService.GestureResultCallback() {
+                      override fun onCompleted(gestureDescription: GestureDescription?) {
+                          ok = true
+                          latch.countDown()
+                      }
+
+                      override fun onCancelled(gestureDescription: GestureDescription?) {
+                          latch.countDown()
+                      }
+                  }, null)
+                  latch.await(2, TimeUnit.SECONDS)
+                  return ok
+              }
+
+              private fun typeText(id: Int, text: String, snap: ScreenSnapshot): String {
+                  val n = snap.nodes.getOrNull(id) ?: return "bad element id $id (use a number from the screen list)"
+                  n.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                  val b = Bundle()
+                  b.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                  return if (n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b)) "typed" else "type failed"
+              }
+
+              private fun pressEnter(id: Int, snap: ScreenSnapshot): String {
+                  if (Build.VERSION.SDK_INT < 30) {
+                      return "enter not supported on this Android version, tap the search button instead"
+                  }
+                  val n = snap.nodes.getOrNull(id) ?: findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                      ?: return "no input field to press enter in"
+                  return if (n.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)) {
+                      "enter pressed"
+                  } else {
+                      "enter failed"
+                  }
+              }
+
+              private fun scroll(direction: String, id: Int, snap: ScreenSnapshot): String {
+                  val n = snap.nodes.getOrNull(id) ?: snap.nodes.firstOrNull { it.isScrollable }
+                      ?: return "nothing scrollable on screen"
+                  val act = if (direction == "up") {
+                      AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+                  } else {
+                      AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                  }
+                  return if (n.performAction(act)) "scrolled $direction" else "scroll failed (end of list?)"
+              }
+
+              // ------------------------------------------------------------------ feedback
+
+              /** msg goes on screen; spoken (if not empty and voice reply is on) goes to the Hindi voice. */
+              private fun finish(msg: String, spoken: String = "") {
+                  emit("MJ: $msg")
+                  setStatus(msg)
+                  if (spoken.isNotBlank() && getSharedPreferences("mj", MODE_PRIVATE).getBoolean("voice", true)) {
+                      speak(spoken)
+                  }
+                  Thread.sleep(1500)
+              }
+
+              private fun emit(s: String) {
+                  synchronized(logs) {
+                      logs.add(s)
+                      if (logs.size > 200) logs.removeAt(0)
+                  }
+                  sink?.invoke(s)
+              }
+
+              private fun speak(t: String) {
+                  if (t.isNotBlank()) tts?.speak(t, TextToSpeech.QUEUE_FLUSH, null, "mj")
+              }
+
+              private fun setStatus(t: String) {
+                  ui.post { statusView?.text = t }
+              }
+
+              private fun setBubble(listening: Boolean) {
+                  ui.post { bubbleBg?.setColor(if (listening) 0xFFE53935.toInt() else 0xFF1E88E5.toInt()) }
+              }
+
+              private fun onBubbleTap() {
+                  if (running) {
+                      cancelled = true
+                      emit("STOP dabaya")
+                  } else {
+                      startListening()
+                  }
+              }
+
+              private fun showBubble() {
+                  ui.post {
+                      if (bubble != null) return@post
+                      val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+                      val dm = resources.displayMetrics
+                      val size = (56 * dm.density).toInt()
+
+                      val bg = GradientDrawable()
+                      bg.shape = GradientDrawable.OVAL
+                      bg.setColor(0xFF1E88E5.toInt())
+
+                      val v = TextView(this)
+                      v.text = "🎤"
+                      v.textSize = 22f
+                      v.gravity = Gravity.CENTER
+                      v.background = bg
+
+                      val lp = WindowManager.LayoutParams(
+                          size, size,
+                          WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                          PixelFormat.TRANSLUCENT
+                      )
+                      lp.gravity = Gravity.TOP or Gravity.START
+                      lp.x = dm.widthPixels - size - 16
+                      lp.y = dm.heightPixels / 2
+
+                      var sx = 0f
+                      var sy = 0f
+                      var ox = 0
+                      var oy = 0
+                      var moved = false
+                      v.setOnTouchListener { _, e ->
+                          when (e.action) {
+                              MotionEvent.ACTION_DOWN -> {
+                                  sx = e.rawX
+                                  sy = e.rawY
+                                  ox = lp.x
+                                  oy = lp.y
+                                  moved = false
+                                  true
+                              }
+                              MotionEvent.ACTION_MOVE -> {
+                                  val dx = (e.rawX - sx).toInt()
+                                  val dy = (e.rawY - sy).toInt()
+                                  if (abs(dx) > 10 || abs(dy) > 10) moved = true
+                                  if (moved) {
+                                      lp.x = ox + dx
+                                      lp.y = oy + dy
+                                      try {
+                                          wm.updateViewLayout(v, lp)
+                                      } catch (ex: Exception) {
+                                      }
+                                  }
+                                  true
+                              }
+                              MotionEvent.ACTION_UP -> {
+                                  if (!moved) onBubbleTap()
+                                  true
+                              }
+                              else -> false
+                          }
+                      }
+
+                      try {
+                          wm.addView(v, lp)
+                          bubble = v
+                          bubbleBg = bg
+                      } catch (e: Exception) {
+                          emit("bubble error: ${e.message}")
+                      }
+                  }
+              }
+
+              private fun hideBubble() {
+                  ui.post {
+                      val b = bubble
+                      if (b != null) {
+                          try {
+                              (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(b)
+                          } catch (e: Exception) {
+                          }
+                      }
+                      bubble = null
+                      bubbleBg = null
+                  }
+              }
+
+              private fun showOverlay() {
+                  ui.post {
+                      if (overlay != null) return@post
+                      val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+                      val row = LinearLayout(this)
+                      row.orientation = LinearLayout.HORIZONTAL
+                      row.gravity = Gravity.CENTER_VERTICAL
+                      row.setBackgroundColor(0xE6101820.toInt())
+                      row.setPadding(24, 16, 24, 16)
+
+                      val tv = TextView(this)
+                      tv.setTextColor(Color.WHITE)
+                      tv.textSize = 13f
+
+                      val stop = Button(this)
+                      stop.text = "STOP"
+                      stop.setOnClickListener { cancelled = true }
+
+                      row.addView(tv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                      row.addView(
+                          stop,
+                          LinearLayout.LayoutParams(
+                              ViewGroup.LayoutParams.WRAP_CONTENT,
+                              ViewGroup.LayoutParams.WRAP_CONTENT
+                          )
+                      )
+
+                      val lp = WindowManager.LayoutParams(
+                          ViewGroup.LayoutParams.MATCH_PARENT,
+                          ViewGroup.LayoutParams.WRAP_CONTENT,
+                          WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                          PixelFormat.TRANSLUCENT
+                      )
+                      lp.gravity = Gravity.BOTTOM
+                      try {
+                          wm.addView(row, lp)
+                          overlay = row
+                          statusView = tv
+                      } catch (e: Exception) {
+                          emit("overlay error: ${e.message}")
+                      }
+                  }
+              }
+
+              private fun hideOverlay() {
+                  ui.post {
+                      val o = overlay
+                      if (o != null) {
+                          try {
+                              (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(o)
+                          } catch (e: Exception) {
+                          }
+                      }
+                      overlay = null
+                      statusView = null
+                  }
+              }
+          }
+          MJEOF
+          mkdir -p app/src/main/java/com/waqas/mj
+          cat > app/src/main/java/com/waqas/mj/MainActivity.kt <<'MJEOF'
+          package com.waqas.mj
+
+          import android.Manifest
+          import android.app.Activity
+          import android.content.Intent
+          import android.content.pm.PackageManager
+          import android.net.Uri
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.text.InputType
+          import android.widget.Button
+          import android.widget.CheckBox
+          import android.widget.EditText
+          import android.widget.LinearLayout
+          import android.widget.ScrollView
+          import android.widget.TextView
+          import android.widget.Toast
+
+          class MainActivity : Activity() {
+
+              private lateinit var status: TextView
+              private lateinit var logView: TextView
+              private lateinit var cmdBox: EditText
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  val prefs = getSharedPreferences("mj", MODE_PRIVATE)
+                  val pad = (16 * resources.displayMetrics.density).toInt()
+
+                  val col = LinearLayout(this)
+                  col.orientation = LinearLayout.VERTICAL
+                  col.setPadding(pad, pad * 2, pad, pad)
+
+                  fun label(t: String, size: Float = 14f): TextView {
+                      val v = TextView(this)
+                      v.text = t
+                      v.textSize = size
+                      col.addView(v)
+                      return v
+                  }
+
+                  fun button(t: String, onClick: () -> Unit): Button {
+                      val b = Button(this)
+                      b.text = t
+                      b.setOnClickListener { onClick() }
+                      col.addView(b)
+                      return b
+                  }
+
+                  label("MJ Assistant", 26f)
+                  status = label("")
+
+                  button("1) Accessibility ON karein") {
+                      startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                  }
+                  button("2) Display over other apps allow karein") {
+                      startActivity(
+                          Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                      )
+                  }
+                  button("4) Mic permission allow karein") { askMic() }
+
+                  label("Gemini API key")
+                  val keyBox = EditText(this)
+                  keyBox.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+                  keyBox.setText(prefs.getString("key", ""))
+                  col.addView(keyBox)
+
+                  label("Model (default: ${Brain.DEFAULT_MODEL})")
+                  val modelBox = EditText(this)
+                  modelBox.setText(prefs.getString("model", Brain.DEFAULT_MODEL))
+                  col.addView(modelBox)
+
+                  val voice = CheckBox(this)
+                  voice.text = "Awaz mein jawab (Hindi voice)"
+                  voice.isChecked = prefs.getBoolean("voice", true)
+                  col.addView(voice)
+
+                  val bubble = CheckBox(this)
+                  bubble.text = "Floating mic bubble (har screen par)"
+                  bubble.isChecked = prefs.getBoolean("bubble", true)
+                  col.addView(bubble)
+
+                  button("3) Save") {
+                      prefs.edit()
+                          .putString("key", keyBox.text.toString().trim())
+                          .putString("model", modelBox.text.toString().trim().ifEmpty { Brain.DEFAULT_MODEL })
+                          .putBoolean("voice", voice.isChecked)
+                          .putBoolean("bubble", bubble.isChecked)
+                          .apply()
+                      MJService.instance?.refreshBubble()
+                      Toast.makeText(this, "Save ho gaya", Toast.LENGTH_SHORT).show()
+                  }
+
+                  label("Command likhein ya bolein")
+                  cmdBox = EditText(this)
+                  cmdBox.hint = "jaise: flashlight 3 second on karo"
+                  col.addView(cmdBox)
+
+                  button("Send") { send() }
+                  button("Mic (bol kar)") {
+                      val s = MJService.instance
+                      if (s == null) {
+                          Toast.makeText(this, "Pehle Accessibility ON karein", Toast.LENGTH_LONG).show()
+                      } else if (!micGranted()) {
+                          askMic()
+                      } else {
+                          s.startListening()
+                      }
+                  }
+
+                  logView = label("", 12f)
+
+                  val scroll = ScrollView(this)
+                  scroll.addView(col)
+                  setContentView(scroll)
+              }
+
+              private fun micGranted(): Boolean =
+                  checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+              private fun askMic() {
+                  if (micGranted()) {
+                      Toast.makeText(this, "Mic permission pehle se hai", Toast.LENGTH_SHORT).show()
+                  } else {
+                      requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 2)
+                  }
+              }
+
+              private fun updateStatus() {
+                  val svc = if (MJService.instance != null) "ON" else "OFF"
+                  val ovl = if (Settings.canDrawOverlays(this)) "OK" else "NAHI"
+                  val mic = if (micGranted()) "OK" else "NAHI"
+                  status.text = "Accessibility: $svc  |  Display over apps: $ovl  |  Mic: $mic"
+              }
+
+              override fun onRequestPermissionsResult(
+                  requestCode: Int,
+                  permissions: Array<out String>,
+                  grantResults: IntArray
+              ) {
+                  super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+                  updateStatus()
+              }
+
+              override fun onResume() {
+                  super.onResume()
+                  updateStatus()
+                  showLogs()
+                  MJService.sink = { line -> runOnUiThread { logView.append(line + "\n") } }
+              }
+
+              override fun onPause() {
+                  super.onPause()
+                  MJService.sink = null
+              }
+
+              private fun showLogs() {
+                  val copy = synchronized(MJService.logs) { ArrayList(MJService.logs) }
+                  logView.text = copy.joinToString("\n")
+              }
+
+              private fun send() {
+                  val t = cmdBox.text.toString().trim()
+                  if (t.isEmpty()) return
+                  val s = MJService.instance
+                  if (s == null) {
+                      Toast.makeText(this, "Pehle Accessibility ON karein", Toast.LENGTH_LONG).show()
+                      return
+                  }
+                  cmdBox.setText("")
+                  s.runCommand(t)
+                  moveTaskToBack(true)
+              }
+          }
+          MJEOF
+          mkdir -p app/src/main/java/com/waqas/mj
+          cat > app/src/main/java/com/waqas/mj/ScreenReader.kt <<'MJEOF'
+          package com.waqas.mj
+
+          import android.view.accessibility.AccessibilityNodeInfo
+
+          /** A numbered picture of what is on screen right now. */
+          class ScreenSnapshot(
+              val text: String,
+              val nodes: List<AccessibilityNodeInfo>,
+              val hash: Int,
+              val pkg: String
+          )
+
+          object ScreenReader {
+
+              fun read(root: AccessibilityNodeInfo?): ScreenSnapshot {
+                  if (root == null) return ScreenSnapshot("(screen not readable)", emptyList(), 0, "")
+                  val nodes = ArrayList<AccessibilityNodeInfo>()
+                  val sb = StringBuilder()
+                  walk(root, nodes, sb)
+                  val body = if (sb.isEmpty()) "(empty screen)" else sb.toString()
+                  return ScreenSnapshot(body, nodes, body.hashCode(), root.packageName?.toString() ?: "")
+              }
+
+              private fun walk(n: AccessibilityNodeInfo?, nodes: ArrayList<AccessibilityNodeInfo>, sb: StringBuilder) {
+                  if (n == null || nodes.size >= 80 || !n.isVisibleToUser) return
+                  val label = (n.text?.toString() ?: n.contentDescription?.toString() ?: n.hintText?.toString() ?: "").trim()
+                  val keep = n.isClickable || n.isEditable || n.isScrollable || n.isCheckable || label.isNotEmpty()
+                  if (keep) {
+                      val kind = when {
+                          n.isEditable -> "input"
+                          n.isClickable -> "button"
+                          n.isScrollable -> "scroll"
+                          else -> "text"
+                      }
+                      sb.append('[').append(nodes.size).append("] ").append(kind)
+                      if (label.isNotEmpty()) {
+                          sb.append(" \"").append(label.take(60).replace("\n", " ")).append('"')
+                      }
+                      if (n.isChecked) sb.append(" (checked)")
+                      sb.append('\n')
+                      nodes.add(n)
+                  }
+                  for (i in 0 until n.childCount) {
+                      walk(n.getChild(i), nodes, sb)
+                  }
+              }
+          }
+          MJEOF
+          mkdir -p app/src/main/res/values
+          cat > app/src/main/res/values/strings.xml <<'MJEOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <string name="app_name">MJ</string>
+              <string name="service_desc">MJ aap ke kehne par screen padhti hai aur tap, type, scroll jaise kaam karti hai.</string>
+          </resources>
+          MJEOF
+          mkdir -p app/src/main/res/xml
+          cat > app/src/main/res/xml/accessibility_config.xml <<'MJEOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:accessibilityEventTypes="typeWindowStateChanged"
+              android:accessibilityFeedbackType="feedbackGeneric"
+              android:accessibilityFlags="flagRetrieveInteractiveWindows|flagIncludeNotImportantViews|flagReportViewIds"
+              android:canPerformGestures="true"
+              android:canRetrieveWindowContent="true"
+              android:notificationTimeout="100"
+              android:description="@string/service_desc" />
+          MJEOF
+          cat > build.gradle.kts <<'MJEOF'
+          plugins {
+              id("com.android.application") version "8.5.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+          }
+          MJEOF
+          cat > gradle.properties <<'MJEOF'
+          org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          kotlin.code.style=official
+          MJEOF
+          cat > settings.gradle.kts <<'MJEOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "MJ"
+          include(":app")
+          MJEOF
+          base64 -d app/mj.keystore.b64 > app/mj.keystore
+          echo 'project written:' && find . -type f -not -path './.git/*' | head -50
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Keep APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MJ-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish APK in Releases (direct download)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mj-build-${{ github.run_number }}
+          name: MJ build ${{ github.run_number }}
+          files: app/build/outputs/apk/debug/app-debug.apk
+
 
           import org.json.JSONArray
           import org.json.JSONObject
