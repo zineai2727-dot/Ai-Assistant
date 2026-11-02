@@ -44,8 +44,8 @@ jobs:
                   applicationId = "com.waqas.mj"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 3
-                  versionName = "1.2"
+                  versionCode = 4
+                  versionName = "1.3"
               }
 
               // One fixed key for every build, so a new APK installs over the old one.
@@ -139,7 +139,7 @@ jobs:
           import java.net.HttpURLConnection
           import java.net.URL
 
-          /** Talks to Gemini. Two jobs: understand what the user said, and pick the next screen action. */
+          /** Talks to Gemini. Jobs: understand what the user said, pick the next screen action, confirm risky work. */
           object Brain {
 
               const val DEFAULT_MODEL = "gemini-flash-lite-latest"
@@ -155,22 +155,23 @@ jobs:
           Input is either audio of what he said, or his typed text. Answer with ONE JSON object:
           - heard: what he said, written in Roman Urdu with Latin letters. Keep English words in English.
           - mode: one of tasks, chat, stop, none.
-            tasks = he wants the phone to DO something (open, play, search, call, volume, brightness, flashlight, read the screen, send a message, anything on the phone).
+            tasks = he wants the phone to DO something (open, play, search, call, volume, brightness, flashlight, lock the phone, maps and distance, settings, read the screen, send a message, anything on the phone).
             chat = talking, feelings, greetings, thanks, jokes, questions you can answer yourself, i love you, good night.
             stop = he is ending the conversation (bas, nahi, theek hai shukriya, allah hafiz, khatam, rehne do).
             none = you could not hear or understand anything.
-          - tasks: only for mode tasks. A list of SEPARATE phone tasks in the order he said them. One short plain English sentence each, with exact app names and search words, for example ["Play the song Tere Naam in VLC", "Search cricket score in Chrome", "Set volume to full", "Set brightness to full"]. Never merge two apps into one task. Never invent tasks.
-          - reply: a short natural answer in Roman Urdu (Latin letters) for the screen. For tasks it is a short acknowledgement such as Ji, abhi karti hoon.
+          - tasks: only for mode tasks. A list of SEPARATE phone tasks in the order he said them. One short plain English sentence each, with exact app names and search words, for example ["Open YouTube", "Play the song Tere Naam on YouTube", "Set volume to full"]. Each task must be about ONE thing only. Never merge two apps or two goals into one task. Never invent tasks.
+          - reply: a short natural answer in Roman Urdu (Latin letters) for the screen.
+            For mode tasks the reply is ONLY a short acknowledgement such as Ji, abhi karti hoon. It must NEVER say that anything is already done, never describe a result, never promise something you cannot do, and never say goodbye. The work has not happened yet when this reply is spoken.
           - speak: the same reply written in Hindi Devanagari so a Hindi voice can say it. Spell Urdu and Islamic words properly (क़ुरान, अल्लाह, अस्सलामु अलैकुम, शुक्रिया, नमाज़). No emoji.
 
-          How MJ talks: like a close, kind friend. Warm, natural, one to three short sentences, never robotic and never like a manual. Notice his feeling first: if he is sad, tired, worried or happy, respond to that. Use his name only now and then.
+          How MJ talks: like a close, kind friend. Warm, natural, one to three short sentences, never robotic and never like a manual. Notice his feeling first: if he is sad, tired, worried or happy, respond to that. Use his name only now and then. Never call him Boss, sir or any title.
           If he says i love you or something affectionate, answer with warmth and gratitude as a caring friend and helper, and say you are always here to help him. You are an AI assistant, not a person and not a romantic partner, so do not claim to love him back and do not promise to be everything for him. Stay gentle and honest.
           For good night wish him a peaceful night and a dua. Use the earlier conversation for context.
           """
 
               private const val SYSTEM = """
           You are MJ, a fast and reliable assistant that controls an Android phone through an accessibility service.
-          Each turn you get ONE CURRENT TASK (do only this one; the user's other tasks are handled separately), the full request for context, the current app, a numbered list of what is on screen, and the actions already taken.
+          Each turn you get ONE CURRENT TASK, the tasks ALREADY DONE and the tasks LEFT FOR LATER (they belong to the user's wider request and are handled separately), the current app, a numbered list of what is on screen, and the actions already taken.
           Reply with exactly ONE next action as a FLAT JSON object, for example {"action":"tap","id":3} or {"action":"open_app","name":"WhatsApp"}.
           Always put the needed fields directly in the object. Never leave a needed field out.
 
@@ -179,9 +180,12 @@ jobs:
           - open_app: name
           - youtube_search: query
           - web_search: query (opens a Google search in Chrome)
+          - maps: query, route (true = driving route from the current location, the screen then shows distance and time; false = just search the place)
+          - open_settings: page (wifi, bluetooth, location, hotspot, airplane, display, sound, battery, data, nfc, storage, apps, date, accessibility)
           - call: number (opens the dialer with the number)
           - volume: level (0 to 100, 100 is full) or direction (up, down, mute, unmute)
           - brightness: level (0 to 100, 100 is full)
+          - lock_screen, screenshot, quick_settings: no fields
           - tap: id
           - type: id, text
           - enter: id (optional; presses the keyboard Enter/Search key)
@@ -189,25 +193,29 @@ jobs:
           - back, home, recents, notifications: no fields
           - wait: ms (up to 5000)
           - say: text
-          - done: message, speak, ok
+          - done: message, speak, ok (use only these three fields)
 
           Rules:
-          1. Prefer direct actions (flashlight, open_app, youtube_search, web_search, call, volume, brightness, back, home) over tapping the screen. They are faster and cannot loop.
+          0. Do ONLY the CURRENT TASK. Never do work that belongs to ALREADY DONE or LEFT FOR LATER tasks. The moment the CURRENT TASK is finished, call done.
+          1. Prefer direct actions (flashlight, open_app, youtube_search, web_search, maps, open_settings, call, volume, brightness, lock_screen, screenshot, back, home) over tapping the screen. They are faster and cannot loop.
           2. Use element ids from the current screen list only. Ids change every turn. tap and type always need an id.
           3. If the last action says "screen did not change", do NOT repeat it. Try another element, scroll, or a different approach.
           4. Be efficient. Most tasks need 1 to 5 actions. Never tap things that the task does not need. After open_app or a search the screen has already settled; only if the list is nearly empty or shows a loading spinner, use wait once.
           5. Playing something on YouTube: after youtube_search the results are on screen. Tap the best matching real video at once (not an ad, not a Shorts shelf), then check the next screen.
           6. Music or video player apps such as VLC: open_app, use the search icon or field, type the song name, tap the matching result.
-          7. Messaging example: open_app WhatsApp, tap the search icon, type the contact name, tap the matching chat, tap the message box, type the message, tap Send.
-          8. Before done, verify from the screen list. A play task needs a player on screen (play or pause control, seek bar, video title). A search task needs results on screen. A message task needs the text sent or in the box. If you cannot see proof, do one more check action. If you still cannot confirm, call done with ok false and say honestly what you could not confirm. Never claim a success you cannot see.
-          9. Direct actions report their result in ACTIONS SO FAR. If it says permission missing or not found, call done with ok false and tell the user.
-          10. Never pay, transfer money, delete data, uninstall or buy anything unless the user explicitly asked for exactly that.
-          11. done.message is one short sentence in Roman Urdu (Latin letters). done.speak is the same sentence in Hindi Devanagari script (Islamic words spelled properly). done.ok is true only when the task is really finished.
-          12. Output only the JSON object and nothing else.
+          7. Messaging: open_app WhatsApp, tap the search icon, type the contact name, tap the matching chat, and only when the screen shows that contact's name at the top and a message box, tap the message box, type the message, tap Send. Never type the message before you are inside the right chat. After type, the result shows what the field now contains; check it.
+          8. Questions about a place, route or distance: use maps with route true, then read the distance and time from the screen and put them in done.message.
+          9. Wi-Fi, Bluetooth, location, hotspot, airplane mode: use open_settings with the page, then tap the toggle on that screen and check the (checked) state changed.
+          10. Before done, verify from the screen list. A play task needs a player on screen (play or pause control, seek bar, video title). A search task needs results on screen. A message task needs the text sent or in the box. If you cannot see proof, do one more check action. If you still cannot confirm, call done with ok false and say honestly what you could not confirm. Never claim a success you cannot see.
+          11. Direct actions report their result in ACTIONS SO FAR. If it already shows success, call done; never run the same direct action twice. If it says permission missing or not found, call done with ok false and tell the user.
+          12. Never pay, transfer money, delete data, uninstall or buy anything unless the CURRENT TASK says exactly that.
+          13. done.message is one short sentence in Roman Urdu (Latin letters). done.speak is the same sentence in Hindi Devanagari script (Islamic words spelled properly). done.ok is true only when the task is really finished.
+          14. Output only the JSON object and nothing else.
           """
 
               private val ACTIONS = listOf(
-                  "flashlight", "open_app", "youtube_search", "web_search", "call", "volume", "brightness",
+                  "flashlight", "open_app", "youtube_search", "web_search", "maps", "open_settings", "call",
+                  "volume", "brightness", "lock_screen", "screenshot", "quick_settings",
                   "tap", "type", "enter", "scroll", "back", "home", "recents", "notifications",
                   "wait", "say", "done"
               )
@@ -219,6 +227,7 @@ jobs:
 
               private fun str() = JSONObject().put("type", "STRING")
               private fun int() = JSONObject().put("type", "INTEGER")
+              private fun bool() = JSONObject().put("type", "BOOLEAN")
 
               private fun actionSchema(): JSONObject {
                   val props = JSONObject()
@@ -227,15 +236,17 @@ jobs:
                       .put("text", str())
                       .put("name", str())
                       .put("query", str())
+                      .put("page", str())
                       .put("number", str())
                       .put("direction", str())
-                      .put("on", JSONObject().put("type", "BOOLEAN"))
+                      .put("on", bool())
+                      .put("route", bool())
                       .put("seconds", int())
                       .put("level", int())
                       .put("ms", int())
                       .put("message", str())
                       .put("speak", str())
-                      .put("ok", JSONObject().put("type", "BOOLEAN"))
+                      .put("ok", bool())
                   return JSONObject()
                       .put("type", "OBJECT")
                       .put("properties", props)
@@ -255,6 +266,19 @@ jobs:
                       .put("required", JSONArray().put("heard").put("mode").put("reply").put("speak"))
               }
 
+              private fun yesSchema(): JSONObject =
+                  JSONObject()
+                      .put("type", "OBJECT")
+                      .put("properties", JSONObject().put("yes", bool()))
+                      .put("required", JSONArray().put("yes"))
+
+              private fun audioPart(wav: ByteArray): JSONObject =
+                  JSONObject().put(
+                      "inlineData",
+                      JSONObject().put("mimeType", "audio/wav")
+                          .put("data", Base64.encodeToString(wav, Base64.NO_WRAP))
+                  )
+
               // ---------------------------------------------------------------- public
 
               /**
@@ -271,15 +295,7 @@ jobs:
                   chat: List<String>
               ): JSONObject {
                   val parts = JSONArray()
-                  if (wav != null) {
-                      parts.put(
-                          JSONObject().put(
-                              "inlineData",
-                              JSONObject().put("mimeType", "audio/wav")
-                                  .put("data", Base64.encodeToString(wav, Base64.NO_WRAP))
-                          )
-                      )
-                  }
+                  if (wav != null) parts.put(audioPart(wav))
                   val p = buildString {
                       append("EARLIER CONVERSATION (oldest first):\n")
                       if (chat.isEmpty()) {
@@ -301,18 +317,36 @@ jobs:
                   return post(key, model, understandSystem(name), parts, understandSchema())
               }
 
+              /** Did the user clearly say yes? Used before irreversible work. */
+              fun confirm(key: String, model: String, wav: ByteArray?, text: String?): Boolean {
+                  val parts = JSONArray()
+                  if (wav != null) parts.put(audioPart(wav))
+                  val q = if (wav != null) {
+                      "In the audio above, did the speaker clearly say yes (haan, ji, kar do, yes, theek hai, pakka, bilkul)?"
+                  } else {
+                      "He said: " + text + "\nDid he clearly say yes (haan, ji, kar do, yes, theek hai, pakka, bilkul)?"
+                  }
+                  parts.put(JSONObject().put("text", q + " Answer with JSON {\"yes\": true or false}. If unclear or no, answer false."))
+                  val r = post(key, model, "You decide whether a person said yes. Output only JSON.", parts, yesSchema())
+                  return r.optBoolean("yes", false)
+              }
+
               /** Picks the single next action for the current task. */
               fun decide(
                   key: String,
                   model: String,
                   task: String,
-                  request: String,
+                  before: List<String>,
+                  after: List<String>,
                   history: List<String>,
                   snap: ScreenSnapshot
               ): JSONObject {
                   val prompt = buildString {
                       append("CURRENT TASK: ").append(task).append("\n")
-                      append("FULL REQUEST (context only): ").append(request).append("\n\n")
+                      append("ALREADY DONE (do not repeat): ")
+                      append(if (before.isEmpty()) "(none)" else before.joinToString("; ")).append("\n")
+                      append("LEFT FOR LATER (do NOT do now): ")
+                      append(if (after.isEmpty()) "(none)" else after.joinToString("; ")).append("\n\n")
                       append("CURRENT APP: ").append(snap.pkg).append("\n")
                       append("SCREEN ELEMENTS:\n").append(snap.text).append("\n")
                       append("ACTIONS SO FAR:\n")
@@ -526,6 +560,50 @@ jobs:
                   return openUrl(ctx, url, "com.android.chrome") + " (web search in Chrome: $query)"
               }
 
+              fun maps(ctx: Context, query: String, route: Boolean): String {
+                  if (query.isBlank()) return "no place given"
+                  val q = URLEncoder.encode(query, "UTF-8")
+                  val url = if (route) {
+                      "https://www.google.com/maps/dir/?api=1&destination=$q&travelmode=driving"
+                  } else {
+                      "https://www.google.com/maps/search/?api=1&query=$q"
+                  }
+                  val r = openUrl(ctx, url, "com.google.android.apps.maps")
+                  return if (route) "$r (route to $query)" else "$r (map search $query)"
+              }
+
+              fun openSettings(ctx: Context, page: String): String {
+                  val p = page.lowercase().trim()
+                  val action = when {
+                      p.contains("wifi") || p.contains("wi-fi") -> Settings.ACTION_WIFI_SETTINGS
+                      p.contains("bluetooth") -> Settings.ACTION_BLUETOOTH_SETTINGS
+                      p.contains("location") || p.contains("gps") -> Settings.ACTION_LOCATION_SOURCE_SETTINGS
+                      p.contains("hotspot") || p.contains("tether") -> Settings.ACTION_WIRELESS_SETTINGS
+                      p.contains("airplane") || p.contains("flight") -> Settings.ACTION_AIRPLANE_MODE_SETTINGS
+                      p.contains("display") || p.contains("brightness") -> Settings.ACTION_DISPLAY_SETTINGS
+                      p.contains("sound") || p.contains("volume") -> Settings.ACTION_SOUND_SETTINGS
+                      p.contains("battery") -> Settings.ACTION_BATTERY_SAVER_SETTINGS
+                      p.contains("data") || p.contains("network") || p.contains("mobile") -> Settings.ACTION_DATA_ROAMING_SETTINGS
+                      p.contains("nfc") -> Settings.ACTION_NFC_SETTINGS
+                      p.contains("storage") -> Settings.ACTION_INTERNAL_STORAGE_SETTINGS
+                      p.contains("app") -> Settings.ACTION_APPLICATION_SETTINGS
+                      p.contains("date") || p.contains("time") -> Settings.ACTION_DATE_SETTINGS
+                      p.contains("accessib") -> Settings.ACTION_ACCESSIBILITY_SETTINGS
+                      else -> Settings.ACTION_SETTINGS
+                  }
+                  return try {
+                      ctx.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                      "opened settings page '$page'"
+                  } catch (e: Exception) {
+                      try {
+                          ctx.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                          "opened main settings (page '$page' not available)"
+                      } catch (e2: Exception) {
+                          "cannot open settings: ${e2.message}"
+                      }
+                  }
+              }
+
               fun brightness(ctx: Context, level: Int): String {
                   if (!Settings.System.canWrite(ctx)) {
                       return "brightness permission nahi hai: MJ app mein '5) Brightness permission' dabayein"
@@ -651,6 +729,15 @@ jobs:
                   private val SENSITIVE = listOf(
                       "pay", "send money", "transfer", "delete", "uninstall",
                       "purchase", "buy", "erase", "factory reset", "remove account"
+                  )
+
+                  private val RISKY = Regex(
+                      "delete|remove|erase|uninstall|format|factory|reset|unsend|\\bpay\\b|send money|transfer|purchase|\\bbuy\\b"
+                  )
+
+                  private val DIRECT = setOf(
+                      "flashlight", "open_app", "youtube_search", "web_search", "call", "volume", "brightness",
+                      "maps", "open_settings", "lock_screen", "screenshot", "quick_settings"
                   )
               }
 
@@ -888,6 +975,7 @@ jobs:
                   val key = prefs.getString("key", "") ?: ""
                   val model = (prefs.getString("model", "") ?: "").ifEmpty { Brain.DEFAULT_MODEL }
                   val name = (prefs.getString("name", "") ?: "").ifBlank { "Waqas" }
+                  val agentModel = (prefs.getString("model2", "") ?: "").ifBlank { model }
                   if (key.isBlank()) {
                       finish("Pehle app mein Gemini API key save karein", "पहले ऐप में जेमिनी की सेट कीजिए।")
                       return false
@@ -946,6 +1034,20 @@ jobs:
                       return true
                   }
 
+                  if (tasks.any { RISKY.containsMatchIn(it.lowercase()) }) {
+                      if (!convo) {
+                          finish(
+                              "Yeh kaam wapas nahi ho sakta, is liye sirf mic se bolkar karein",
+                              "यह काम वापस नहीं हो सकता, इसलिए माइक से बोलकर कीजिए।"
+                          )
+                          return false
+                      }
+                      if (!confirmRisky(key, model)) {
+                          finish("Theek hai, maine woh kaam nahi kiya", "ठीक है, मैंने वह काम नहीं किया।")
+                          return true
+                      }
+                  }
+
                   emit("MJ: $reply")
                   setStatus(reply)
                   speak(spoken, false)
@@ -955,7 +1057,9 @@ jobs:
                       if (cancelled) break
                       emit("Kaam ${i + 1}/${tasks.size}: $t")
                       setStatus("Kaam ${i + 1}/${tasks.size}: $t")
-                      results.add(runTask(t, heard, key, model))
+                      val before = results.mapIndexed { j, r -> tasks[j] + " -> " + r.msg }
+                      val after = tasks.drop(i + 1)
+                      results.add(runTask(t, heard, key, agentModel, before, after))
                   }
                   if (cancelled) {
                       finish("Roka gaya (stopped)")
@@ -979,14 +1083,26 @@ jobs:
 
               // ------------------------------------------------------------------ one task
 
-              private fun runTask(task: String, request: String, key: String, model: String): TaskResult {
+              private fun runTask(
+                  task: String,
+                  request: String,
+                  key: String,
+                  model: String,
+                  before: List<String>,
+                  after: List<String>
+              ): TaskResult {
                   val quick = fastTorch(task, false)
                   if (quick != null) return quick
 
                   val history = ArrayList<String>()
+                  val recent = ArrayList<String>()
                   var lastSig = ""
+                  var lastResult = ""
                   var prevHash = 0
                   var prevUi = false
+                  var forced = false
+                  val stuckMsg = "Atak gayi: '$task' mein wahi action baar baar aa raha tha, ruk gayi"
+                  val stuckSpeak = "मैं इस काम में अटक गई, इसलिए रुक गई।"
 
                   for (step in 1..15) {
                       if (cancelled) return TaskResult(false, "Roka gaya (stopped)", "")
@@ -1002,39 +1118,97 @@ jobs:
                       }
 
                       val reply = try {
-                          Brain.decide(key, model, task, request, history, snap)
+                          Brain.decide(key, model, task, before, after, history, snap)
                       } catch (e: Exception) {
                           return TaskResult(false, "AI error: ${e.message}", "")
                       }
                       val action = reply.optString("action")
                       val args = Brain.args(reply)
 
-                      val sig = action + args.toString() + snap.hash
-                      if (sig == lastSig) {
-                          return TaskResult(
-                              false,
-                              "Atak gayi: '$task' mein wahi action dobara aa raha tha, ruk gayi",
-                              "मैं इस काम में अटक गई, इसलिए रुक गई।"
-                          )
+                      if (action == "done") {
+                          val m = args.optString("message", "").ifBlank { args.optString("text", "") }.ifBlank { "Ho gaya" }
+                          val s = args.optString("speak", "").ifBlank { m }
+                          return TaskResult(args.optBoolean("ok", true), m, s)
                       }
+
+                      // the same action again and again, whatever the screen looks like
+                      val same = action + args.toString()
+                      val limit = if (action == "scroll" || action == "wait") 4 else 2
+                      if (recent.takeLast(10).count { it == same } >= limit) {
+                          return TaskResult(false, stuckMsg, stuckSpeak)
+                      }
+                      recent.add(same)
+
+                      // the same action on a screen that did not change
+                      val sig = same + snap.hash
+                      if (sig == lastSig) {
+                          if (action in DIRECT && !failed(lastResult)) {
+                              return TaskResult(true, "Ho gaya ($lastResult)", "हो गया।")
+                          }
+                          if (action == "tap" && !forced) {
+                              forced = true
+                              val r = tapGesture(args.optInt("id", -1), snap)
+                              history.add("$action $args -> first click did nothing, used a real touch: $r")
+                              emit("Step $step: real touch tap $args")
+                              prevUi = true
+                              prevHash = snap.hash
+                              settle("tap")
+                              continue
+                          }
+                          return TaskResult(false, stuckMsg, stuckSpeak)
+                      }
+                      forced = false
                       lastSig = sig
 
                       emit("Step $step: $action $args")
                       setStatus("$task (step $step)")
 
-                      if (action == "done") {
-                          val m = args.optString("message", "").ifBlank { "Ho gaya" }
-                          val s = args.optString("speak", "").ifBlank { m }
-                          return TaskResult(args.optBoolean("ok", true), m, s)
-                      }
-
                       val result = execute(action, args, snap, request)
+                      lastResult = result
                       history.add("$action $args -> $result")
                       prevUi = action == "tap" || action == "type" || action == "scroll" || action == "enter"
                       prevHash = snap.hash
                       settle(action)
                   }
                   return TaskResult(false, "'$task' poora nahi ho saka (15 step ho gaye)", "यह काम पूरा नहीं हो पाया।")
+              }
+
+              private fun failed(r: String): Boolean {
+                  val s = r.lowercase()
+                  return s.contains("not found") || s.contains("error") || s.contains("failed") ||
+                      s.contains("nahi") || s.contains("blocked") || s.contains("cannot") || s.startsWith("bad ")
+              }
+
+              /** Asks (by voice) before irreversible work. Only a clear yes continues. */
+              private fun confirmRisky(key: String, model: String): Boolean {
+                  setBubble(Mode.LISTEN)
+                  finish(
+                      "Yeh kaam wapas nahi ho sakta. Pakka? 'Haan' boliye",
+                      "यह काम वापस नहीं हो सकता। क्या आप पक्का चाहते हैं? हाँ बोलिए।"
+                  )
+                  if (cancelled) return false
+                  setStatus("Haan ya na boliye...")
+                  val rec = Recorder.record(8000L) { cancelled }
+                  var answer = false
+                  val w = rec.wav
+                  if (w != null) {
+                      answer = try {
+                          Brain.confirm(key, model, w, null)
+                      } catch (e: Exception) {
+                          false
+                      }
+                  } else if (rec.blocked) {
+                      val t = listenGoogle()
+                      if (!t.isNullOrBlank()) {
+                          answer = try {
+                              Brain.confirm(key, model, null, t)
+                          } catch (e: Exception) {
+                              false
+                          }
+                      }
+                  }
+                  setBubble(Mode.WORK)
+                  return answer
               }
 
               /** Waits until the screen stops changing, so the next decision sees the real new screen. */
@@ -1133,6 +1307,11 @@ jobs:
                       "call" -> Device.dial(this, a.optString("number"))
                       "volume" -> Device.volume(this, a.optString("direction"), a.optInt("level", -1))
                       "brightness" -> Device.brightness(this, a.optInt("level", 100))
+                      "maps" -> Device.maps(this, a.optString("query"), a.optBoolean("route", true))
+                      "open_settings" -> Device.openSettings(this, a.optString("page"))
+                      "lock_screen" -> global(GLOBAL_ACTION_LOCK_SCREEN, "screen locked")
+                      "screenshot" -> global(GLOBAL_ACTION_TAKE_SCREENSHOT, "screenshot taken")
+                      "quick_settings" -> global(GLOBAL_ACTION_QUICK_SETTINGS, "quick settings opened")
                       "tap" -> tap(a.optInt("id", -1), snap, request)
                       "type" -> typeText(a.optInt("id", -1), a.optString("text"), snap)
                       "enter" -> pressEnter(a.optInt("id", -1), snap)
@@ -1198,7 +1377,17 @@ jobs:
                   n.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
                   val b = Bundle()
                   b.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-                  return if (n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b)) "typed" else "type failed"
+                  if (!n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b)) return "type failed"
+                  n.refresh()
+                  return "typed; the field now shows: '" + (n.text?.toString()?.take(60) ?: "") + "'"
+              }
+
+              /** A real touch on the middle of the element, used when a normal click did nothing. */
+              private fun tapGesture(id: Int, snap: ScreenSnapshot): String {
+                  val n = snap.nodes.getOrNull(id) ?: return "bad element id $id"
+                  val r = Rect()
+                  n.getBoundsInScreen(r)
+                  return if (gestureTap(r.centerX().toFloat(), r.centerY().toFloat())) "touched" else "touch failed"
               }
 
               private fun pressEnter(id: Int, snap: ScreenSnapshot): String {
@@ -1508,6 +1697,12 @@ jobs:
                   modelBox.setText(prefs.getString("model", Brain.DEFAULT_MODEL))
                   col.addView(modelBox)
 
+                  label("Kaam wala model (khali chhorein to upar wala hi chalega)")
+                  val model2Box = EditText(this)
+                  model2Box.hint = "jaise: gemini-flash-latest"
+                  model2Box.setText(prefs.getString("model2", ""))
+                  col.addView(model2Box)
+
                   val voice = CheckBox(this)
                   voice.text = "Awaz mein jawab (Hindi voice)"
                   voice.isChecked = prefs.getBoolean("voice", true)
@@ -1523,6 +1718,7 @@ jobs:
                           .putString("key", keyBox.text.toString().trim())
                           .putString("name", nameBox.text.toString().trim().ifEmpty { "Waqas" })
                           .putString("model", modelBox.text.toString().trim().ifEmpty { Brain.DEFAULT_MODEL })
+                          .putString("model2", model2Box.text.toString().trim())
                           .putBoolean("voice", voice.isChecked)
                           .putBoolean("bubble", bubble.isChecked)
                           .apply()
