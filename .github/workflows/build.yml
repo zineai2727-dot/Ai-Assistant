@@ -44,8 +44,8 @@ jobs:
                   applicationId = "com.waqas.mj"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 7
-                  versionName = "1.4.2"
+                  versionCode = 8
+                  versionName = "1.5"
               }
 
               // One fixed key for every build, so a new APK installs over the old one.
@@ -95,6 +95,9 @@ jobs:
               <uses-permission android:name="android.permission.READ_CONTACTS" />
               <uses-permission android:name="android.permission.CALL_PHONE" />
               <uses-permission android:name="android.permission.SEND_SMS" />
+              <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+              <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -176,7 +179,7 @@ jobs:
             chat = talking, feelings, greetings, thanks, jokes, questions you can answer yourself, i love you, good night.
             stop = he is ending the conversation (bas, nahi, theek hai shukriya, allah hafiz, khatam, rehne do).
             none = you could not hear or understand anything.
-          - tasks: only for mode tasks. A list of SEPARATE phone tasks in the order he said them. One short plain English sentence each, with exact app names and search words, for example ["Open YouTube", "Play the song Tere Naam on YouTube", "Set volume to full", "Call Zameer", "Send SMS to Zameer saying Salam"]. Open a person's chat as "Open Zameer's WhatsApp chat". Each task must be about ONE thing only. Never merge two apps or two goals into one task. Never invent tasks.
+          - tasks: only for mode tasks. A list of SEPARATE phone tasks in the order he said them. One short plain English sentence each, with exact app names and search words, for example ["Open YouTube", "Play the song Tere Naam on YouTube", "Set volume to full", "Call Zameer", "Send SMS to Zameer saying Salam"]. Open a person's chat as "Open Zameer's WhatsApp chat". Each task must be about ONE goal only. Never merge two apps or two unrelated goals into one task. Never invent tasks. Steps that depend on each other (take a photo THEN send that photo; find a message THEN react to it; open a chat THEN send a voice note) must stay in ONE task written as one sentence, because a later task cannot see what an earlier one did. Do not add a separate task that only opens an app when a later task already opens it (opening a person's WhatsApp chat opens WhatsApp itself).
           - reply: a short natural answer in Roman Urdu (Latin letters) for the screen.
             For mode tasks the reply is ONLY a short acknowledgement such as Ji, abhi karti hoon. It must NEVER say that anything is already done, never describe a result, never promise something you cannot do, and never say goodbye. The work has not happened yet when this reply is spoken.
           - speak: the same reply written in Hindi Devanagari so a Hindi voice can say it. Spell Urdu and Islamic words properly (क़ुरान, अल्लाह, अस्सलामु अलैकुम, शुक्रिया, नमाज़). No emoji.
@@ -200,7 +203,10 @@ jobs:
           - maps: query, route (true = driving route from the current location, the screen then shows distance and time; false = just search the place)
           - open_settings: page (wifi, bluetooth, location, hotspot, airplane, display, sound, battery, data, nfc, storage, apps, date, accessibility)
           - call_contact: name, number (optional; use when the user gave a number). Calls a person from the phone contacts.
-          - whatsapp_chat: name, number (optional), text (optional). Opens that person's WhatsApp chat directly. With text, the message is typed in the box and you must press Send exactly once.
+          - whatsapp_chat: name, number (optional), text (optional). Opens that person's WhatsApp chat directly. With text, MJ types the message and presses Send itself, exactly once: never press Send yourself.
+          - share_latest: name, number (optional), kind (photo or video), text (optional caption). Sends the newest photo or video from the gallery to that person on WhatsApp; MJ presses Send itself, once.
+          - long_press: id
+          - hold: id, seconds (press and hold; on the WhatsApp microphone button it records a voice note: seconds = how long the user wants to talk, default 10, max 55; letting go sends it)
           - send_sms: name, number (optional), text. Sends an SMS by itself, one time.
           - call: number (opens the dialer with a number)
           - volume: level (0 to 100, 100 is full) or direction (up, down, mute, unmute)
@@ -231,12 +237,15 @@ jobs:
           12. Never pay, transfer money, delete data, uninstall or buy anything unless the CURRENT TASK says exactly that.
           13. done.message is one short sentence in Roman Urdu (Latin letters). done.speak is the same sentence in Hindi Devanagari script (Islamic words spelled properly). done.ok is true only when the task is really finished.
           14. A button that sends, likes, subscribes, follows, shares, saves, downloads, posts, plays or pauses is pressed at most ONCE per task. After pressing it, check the screen and call done. Pressing it again undoes it or sends a second copy.
-          15. Output only the JSON object and nothing else.
+          15. A photo or video to a person: take it first (open_app Camera, tap the shutter button), then call share_latest. Never try to send it by tapping around inside WhatsApp.
+          16. A voice note: whatsapp_chat without text, then find the microphone button (labelled Voice message) on the screen and hold on it for the seconds the user wants. Do not use say or wait while recording. After hold, check the screen and call done.
+          17. Reacting to a message (heart, like and so on): long_press the message bubble, then tap the emoji on the bar that appears (the heart is the red one).
+          18. Output only the JSON object and nothing else.
           """
 
               private val ACTIONS = listOf(
                   "flashlight", "open_app", "youtube_search", "web_search", "maps", "open_settings", "call",
-                  "call_contact", "whatsapp_chat", "send_sms",
+                  "call_contact", "whatsapp_chat", "send_sms", "share_latest", "long_press", "hold",
                   "volume", "brightness", "lock_screen", "screenshot", "quick_settings",
                   "tap", "type", "enter", "scroll", "back", "home", "recents", "notifications",
                   "wait", "say", "done"
@@ -514,6 +523,7 @@ jobs:
 
           import android.Manifest
           import android.content.ActivityNotFoundException
+          import android.content.ContentUris
           import android.content.Context
           import android.content.Intent
           import android.content.pm.PackageManager
@@ -521,7 +531,9 @@ jobs:
           import android.hardware.camera2.CameraManager
           import android.media.AudioManager
           import android.net.Uri
+          import android.os.Build
           import android.provider.ContactsContract
+          import android.provider.MediaStore
           import android.provider.Settings
           import android.telephony.SmsManager
           import java.net.URLEncoder
@@ -572,12 +584,60 @@ jobs:
               fun pickCandidates(all: List<Contact>, name: String): List<Contact> {
                   val exact = all.filter { it.name.equals(name.trim(), ignoreCase = true) }
                   val use = if (exact.isNotEmpty()) exact else all
-                  return use.distinctBy { c -> c.number.filter { ch -> ch.isDigit() }.takeLast(9) }.take(6)
+                  return use.distinctBy { c -> c.number.filter { ch -> ch.isDigit() }.takeLast(9) }.take(10)
               }
 
               fun describe(c: Contact): String {
                   val label = if (c.label.isNotBlank()) " (" + c.label + ")" else ""
                   return c.name + label + " ..." + c.number.filter { it.isDigit() }.takeLast(4)
+              }
+
+              /** Name, type and the whole number: shown on the screen, never read aloud. */
+              fun describeFull(c: Contact): String {
+                  val label = if (c.label.isNotBlank()) " (" + c.label + ")" else ""
+                  return c.name + label + "  " + c.number
+              }
+
+              private fun mediaGranted(ctx: Context, video: Boolean): Boolean {
+                  val perm = if (Build.VERSION.SDK_INT >= 33) {
+                      if (video) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_MEDIA_IMAGES
+                  } else {
+                      Manifest.permission.READ_EXTERNAL_STORAGE
+                  }
+                  return ctx.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
+              }
+
+              /** The newest photo or video in the gallery (null if none or no permission). */
+              fun latestMedia(ctx: Context, video: Boolean): Uri? {
+                  if (!mediaGranted(ctx, video)) return null
+                  val base = if (video) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                  return try {
+                      ctx.contentResolver.query(
+                          base, arrayOf(MediaStore.MediaColumns._ID), null, null,
+                          MediaStore.MediaColumns.DATE_ADDED + " DESC"
+                      )?.use {
+                          if (it.moveToFirst()) ContentUris.withAppendedId(base, it.getLong(0)) else null
+                      }
+                  } catch (e: Exception) {
+                      null
+                  }
+              }
+
+              /** Opens that person's WhatsApp chat with the photo or video ready to send. */
+              fun shareToWhatsApp(ctx: Context, uri: Uri, video: Boolean, number: String, cc: String, caption: String): String {
+                  val i = Intent(Intent.ACTION_SEND)
+                  i.type = if (video) "video/*" else "image/*"
+                  i.putExtra(Intent.EXTRA_STREAM, uri)
+                  if (caption.isNotBlank()) i.putExtra(Intent.EXTRA_TEXT, caption)
+                  i.setPackage("com.whatsapp")
+                  i.putExtra("jid", waNumber(number, cc) + "@s.whatsapp.net")
+                  i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                  return try {
+                      ctx.startActivity(i)
+                      "opened the chat with the latest " + (if (video) "video" else "photo") + " ready"
+                  } catch (e: Exception) {
+                      "cannot share to WhatsApp: ${e.message}"
+                  }
               }
 
               fun callNumber(ctx: Context, number: String): String {
@@ -609,7 +669,7 @@ jobs:
                   var url = "https://wa.me/$d"
                   if (text.isNotBlank()) url += "?text=" + URLEncoder.encode(text, "UTF-8")
                   val r = openUrl(ctx, url, "com.whatsapp")
-                  val extra = if (text.isNotBlank()) ", text is already typed: press Send exactly once" else ""
+                  val extra = if (text.isNotBlank()) ", message text is typed in the box" else ""
                   return "$r (whatsapp chat $d$extra)"
               }
 
@@ -1117,7 +1177,12 @@ jobs:
                   private val DIRECT = setOf(
                       "flashlight", "open_app", "youtube_search", "web_search", "call", "volume", "brightness",
                       "maps", "open_settings", "lock_screen", "screenshot", "quick_settings",
-                      "call_contact", "whatsapp_chat", "send_sms"
+                      "call_contact", "whatsapp_chat", "send_sms", "share_latest"
+                  )
+
+                  /** While voice notes or media play or record, MJ must stay silent. */
+                  private val QUIET = Regex(
+                      "voice|वॉइस|वाइस|वॉयस|record|रिकॉर्ड|song|गाना|gana|music|म्यूज़िक|म्यूजिक|video|वीडियो|reel|रील|audio|ऑडियो"
                   )
 
                   /** Buttons that must be pressed only once per task: pressing again undoes or duplicates them. */
@@ -1140,6 +1205,9 @@ jobs:
               private val chat = ArrayList<String>()
               private val smsSent = HashSet<String>()
               private val taskTaps = HashSet<String>()
+
+              @Volatile
+              private var quietNow = false
 
               @Volatile
               private var aiKey = ""
@@ -1402,6 +1470,7 @@ jobs:
               private fun turn(wav: ByteArray?, text: String?, convo: Boolean, fromMic: Boolean): Boolean {
                   showOverlay()
                   smsSent.clear()
+                  quietNow = false
                   val prefs = getSharedPreferences("mj", MODE_PRIVATE)
                   val key = prefs.getString("key", "") ?: ""
                   val model = (prefs.getString("model", "") ?: "").ifEmpty { Brain.DEFAULT_MODEL }
@@ -1487,9 +1556,10 @@ jobs:
                       }
                   }
 
+                  quietNow = QUIET.containsMatchIn((heard + " " + tasks.joinToString(" ")).lowercase())
                   emit("MJ: $reply")
                   setStatus(reply)
-                  speak(spoken, false)
+                  if (!quietNow) speak(spoken, false)
 
                   val results = ArrayList<TaskResult>()
                   for ((i, t) in tasks.withIndex()) {
@@ -1508,6 +1578,11 @@ jobs:
                   val msg = results.joinToString("  |  ") { it.msg }
                   val say = results.joinToString("। ") { it.speak }.trim()
                   addChat("MJ: $msg")
+                  if (quietNow) {
+                      finish(msg, "")
+                      quietNow = false
+                      return false
+                  }
                   val tail = if (convo) " और कोई काम?" else ""
                   finish(msg, if (say.isBlank()) "" else say + tail)
                   return true
@@ -1663,19 +1738,18 @@ jobs:
                   return answer
               }
 
-              /** Several contacts or numbers match: ask which one. Returns null if the user did not choose. */
+              /** Several contacts or numbers match: show them on the screen only, then listen for the choice. */
               private fun chooseContact(cands: List<Contact>): Contact? {
-                  val descs = cands.map { Device.describe(it) }
-                  val ordinals = listOf("पहला", "दूसरा", "तीसरा", "चौथा", "पाँचवाँ", "छठा")
-                  val shown = descs.mapIndexed { i, d -> "${i + 1}) $d" }.joinToString("   ")
-                  val spoken = StringBuilder("कई विकल्प मिले। ")
-                  descs.forEachIndexed { i, d -> spoken.append(ordinals[i]).append(": ").append(d).append("। ") }
-                  spoken.append("कौन सा?")
+                  val descs = cands.map { Device.describeFull(it) }
+                  emit("MJ: Kai number mile, kaun sa?")
+                  descs.forEachIndexed { i, d -> emit("${i + 1}) $d") }
+                  val shown = descs.mapIndexed { i, d -> "${i + 1}) $d" }.joinToString("\n")
+                  val spoken = "कई नंबर मिले। स्क्रीन देखिए, कौन सा?"
                   for (attempt in 1..2) {
                       setBubble(Mode.LISTEN)
-                      finish("Kai number mile, kaun sa? $shown", spoken.toString())
+                      setStatus("Kaun sa? (pehla / doosra / teesra...)\n$shown")
+                      if (voiceOn()) speak(spoken, true)
                       if (cancelled) return null
-                      setStatus("Kaun sa? (pehla / doosra / teesra...)")
                       val rec = Recorder.record(9000L) { cancelled }
                       var idx = 0
                       val w = rec.wav
@@ -1723,7 +1797,39 @@ jobs:
                       "call" -> Device.callNumber(this, number) + " [" + shown + "]"
                       "wa" -> {
                           val cc = getSharedPreferences("mj", MODE_PRIVATE).getString("cc", "92") ?: "92"
-                          Device.whatsappChat(this, number, text, cc) + " [" + shown + "]"
+                          val k = "wa|" + number.filter { it.isDigit() }.takeLast(9) + "|" + text
+                          if (text.isNotBlank() && smsSent.contains(k)) {
+                              "message already sent once to $shown, not sending it again"
+                          } else {
+                              val r = Device.whatsappChat(this, number, text, cc)
+                              if (text.isBlank() || r.contains("cannot") || r.contains("error")) {
+                                  r + " [" + shown + "]"
+                              } else {
+                                  smsSent.add(k)
+                                  r + " [" + shown + "] -> " + pressSendOnce()
+                              }
+                          }
+                      }
+                      "share" -> {
+                          val video = a.optString("kind").lowercase().contains("video")
+                          val k = "share|" + number.filter { it.isDigit() }.takeLast(9) + "|" + video
+                          if (smsSent.contains(k)) {
+                              "already sent to $shown, not sending again"
+                          } else {
+                              val uri = Device.latestMedia(this, video)
+                              if (uri == null) {
+                                  "latest " + (if (video) "video" else "photo") + " nahi mili: gallery permission ke liye MJ app mein '6)' dabayein"
+                              } else {
+                                  val cc = getSharedPreferences("mj", MODE_PRIVATE).getString("cc", "92") ?: "92"
+                                  val r = Device.shareToWhatsApp(this, uri, video, number, cc, text)
+                                  if (r.startsWith("cannot")) {
+                                      r
+                                  } else {
+                                      smsSent.add(k)
+                                      r + " [" + shown + "] -> " + pressSendOnce()
+                                  }
+                              }
+                          }
                       }
                       else -> {
                           val k = number.filter { it.isDigit() }.takeLast(9) + "|" + text
@@ -1736,12 +1842,102 @@ jobs:
                   }
               }
 
+              private fun findSend(n: AccessibilityNodeInfo?, depth: Int): AccessibilityNodeInfo? {
+                  if (n == null || depth > 40) return null
+                  val l = (n.contentDescription?.toString() ?: n.text?.toString() ?: "").lowercase().trim()
+                  if (l == "send" || l == "भेजें" || l == "بھیجیں") return n
+                  for (i in 0 until n.childCount) {
+                      val r = findSend(n.getChild(i), depth + 1)
+                      if (r != null) return r
+                  }
+                  return null
+              }
+
+              /** Presses WhatsApp's Send button exactly once. */
+              private fun pressSendOnce(): String {
+                  Thread.sleep(1200)
+                  waitStable(3500)
+                  for (attempt in 1..3) {
+                      val n = findSend(rootInActiveWindow, 0)
+                      if (n != null) {
+                          var t: AccessibilityNodeInfo? = n
+                          while (t != null && !t.isClickable) t = t.parent
+                          if (t != null && t.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                              Thread.sleep(500)
+                              return "Send pressed once"
+                          }
+                          val r = Rect()
+                          n.getBoundsInScreen(r)
+                          if (gestureTap(r.centerX().toFloat(), r.centerY().toFloat())) {
+                              Thread.sleep(500)
+                              return "Send pressed once"
+                          }
+                      }
+                      Thread.sleep(900)
+                  }
+                  return "Send button nahi mila, screen dekh kar check karein (dobara send na karein)"
+              }
+
+              private fun holdAt(x: Float, y: Float, ms: Long): Boolean {
+                  val p = Path()
+                  p.moveTo(x, y)
+                  val g = GestureDescription.Builder()
+                      .addStroke(GestureDescription.StrokeDescription(p, 0, ms.coerceIn(100L, 55000L)))
+                      .build()
+                  val latch = CountDownLatch(1)
+                  var ok = false
+                  dispatchGesture(g, object : AccessibilityService.GestureResultCallback() {
+                      override fun onCompleted(gestureDescription: GestureDescription?) {
+                          ok = true
+                          latch.countDown()
+                      }
+
+                      override fun onCancelled(gestureDescription: GestureDescription?) {
+                          latch.countDown()
+                      }
+                  }, null)
+                  latch.await(ms.coerceIn(100L, 55000L) + 3000L, TimeUnit.MILLISECONDS)
+                  return ok
+              }
+
+              private fun longPress(id: Int, snap: ScreenSnapshot): String {
+                  val n = snap.nodes.getOrNull(id) ?: return "bad element id $id"
+                  var t: AccessibilityNodeInfo? = n
+                  while (t != null && !t.isLongClickable) t = t.parent
+                  if (t != null && t.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)) return "long pressed"
+                  val r = Rect()
+                  n.getBoundsInScreen(r)
+                  return if (holdAt(r.centerX().toFloat(), r.centerY().toFloat(), 800)) "long pressed by gesture" else "long press failed"
+              }
+
+              /** Press and hold (for example the WhatsApp microphone while the user records a voice note). */
+              private fun holdPress(id: Int, seconds: Int, snap: ScreenSnapshot): String {
+                  val n = snap.nodes.getOrNull(id) ?: return "bad element id $id"
+                  val secs = seconds.coerceIn(1, 55)
+                  val r = Rect()
+                  n.getBoundsInScreen(r)
+                  tts?.stop()
+                  val counter = Thread {
+                      try {
+                          for (left in secs downTo 1) {
+                              setStatus("Ab bolein... $left")
+                              Thread.sleep(1000)
+                          }
+                      } catch (e: InterruptedException) {
+                      }
+                  }
+                  counter.start()
+                  val ok = holdAt(r.centerX().toFloat(), r.centerY().toFloat(), secs * 1000L)
+                  counter.interrupt()
+                  return if (ok) "held for $secs seconds and released (a voice note is sent when released)" else "hold failed"
+              }
+
               /** Waits until the screen stops changing, so the next decision sees the real new screen. */
               private fun settle(action: String) {
                   when (action) {
                       "wait" -> return
                       "open_app", "youtube_search", "web_search", "call", "maps", "open_settings",
-                      "call_contact", "whatsapp_chat" -> {
+                      "call_contact", "whatsapp_chat", "share_latest" -> {
                           Thread.sleep(900)
                           waitStable(4000)
                       }
@@ -1835,6 +2031,9 @@ jobs:
                       "call_contact" -> contactAction(a, "call")
                       "whatsapp_chat" -> contactAction(a, "wa")
                       "send_sms" -> contactAction(a, "sms")
+                      "share_latest" -> contactAction(a, "share")
+                      "long_press" -> longPress(a.optInt("id", -1), snap)
+                      "hold" -> holdPress(a.optInt("id", -1), a.optInt("seconds", 10), snap)
                       "volume" -> Device.volume(this, a.optString("direction"), a.optInt("level", -1))
                       "brightness" -> Device.brightness(this, a.optInt("level", 100))
                       "maps" -> Device.maps(this, a.optString("query"), a.optBoolean("route", true))
@@ -1976,7 +2175,7 @@ jobs:
               private fun voiceOn(): Boolean = getSharedPreferences("mj", MODE_PRIVATE).getBoolean("voice", true)
 
               private fun speak(t: String, wait: Boolean) {
-                  if (t.isBlank() || !voiceOn()) return
+                  if (t.isBlank() || !voiceOn() || quietNow) return
                   val engine = tts ?: return
                   val latch = CountDownLatch(1)
                   speakCounter++
@@ -2223,15 +2422,18 @@ jobs:
                           Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:$packageName"))
                       )
                   }
-                  button("6) Contacts / Call / SMS permission allow karein") {
-                      requestPermissions(
-                          arrayOf(
-                              Manifest.permission.READ_CONTACTS,
-                              Manifest.permission.CALL_PHONE,
-                              Manifest.permission.SEND_SMS
-                          ),
-                          3
-                      )
+                  button("6) Contacts / Call / SMS / Gallery permission allow karein") {
+                      val list = ArrayList<String>()
+                      list.add(Manifest.permission.READ_CONTACTS)
+                      list.add(Manifest.permission.CALL_PHONE)
+                      list.add(Manifest.permission.SEND_SMS)
+                      if (Build.VERSION.SDK_INT >= 33) {
+                          list.add(Manifest.permission.READ_MEDIA_IMAGES)
+                          list.add(Manifest.permission.READ_MEDIA_VIDEO)
+                      } else {
+                          list.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+                      }
+                      requestPermissions(list.toTypedArray(), 3)
                   }
                   button("7) Vosk Hindi model (zip file) chunein") {
                       val i = Intent(Intent.ACTION_OPEN_DOCUMENT)
