@@ -44,8 +44,8 @@ jobs:
                   applicationId = "com.waqas.mj"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 5
-                  versionName = "1.4"
+                  versionCode = 7
+                  versionName = "1.4.2"
               }
 
               // One fixed key for every build, so a new APK installs over the old one.
@@ -1284,10 +1284,11 @@ jobs:
                       var offline = ""
 
                       if (!useGoogle) {
-                          val vs = VoskHelper.session(this)
+                          val vs = if (getSharedPreferences("mj", MODE_PRIVATE).getBoolean("offlineCmd", false)) VoskHelper.session(this) else null
                           val feed: ((ShortArray, Int) -> Unit)? = if (vs != null) vs::feed else null
                           val rec = Recorder.record(if (first) 7000L else 9000L, feed) { cancelled }
                           if (vs != null) offline = vs.finish()
+                          if (rec.wav != null) emit("Awaaz record hui: " + Recorder.lastInfo)
                           if (rec.blocked) {
                               useGoogle = true
                               emit("Android background mein mic block kar raha hai, Google mic use kar rahi hoon")
@@ -1444,7 +1445,8 @@ jobs:
                   val mode = u.optString("mode")
                   val reply = u.optString("reply").ifBlank { "Ji" }
                   val spoken = u.optString("speak").ifBlank { reply }
-                  if (wav != null || fromMic) emit("Suna: $heard")
+                  if (wav != null) emit("Suna (Gemini ne awaaz se): $heard")
+                  else if (fromMic) emit("Suna (Google mic se): $heard")
                   if (heard.isNotBlank()) addChat("$name: $heard")
 
                   if (mode == "none") {
@@ -2243,6 +2245,28 @@ jobs:
                       }.start()
                   }
 
+                  button("Mic test (4 second bolein, phir apni awaaz sunein)") {
+                      Thread {
+                          val add = { s: String -> runOnUiThread { logView.append(s + "\n") } }
+                          if (MicState.wakeHolding) {
+                              add("Pehle Wake word OFF karke Save karein, phir mic test karein")
+                          } else {
+                              add("Mic test: ab bolein...")
+                              val rec = Recorder.record(5000L) { false }
+                              val w = rec.wav
+                              if (rec.blocked) {
+                                  add("Mic block hai: Android sirf khamoshi de raha hai")
+                              } else if (w == null) {
+                                  add("Koi awaaz nahi pakri")
+                              } else {
+                                  add("Record hui: " + Recorder.lastInfo + ". Ab sunein...")
+                                  Recorder.playWav(w)
+                                  add("Test khatam")
+                              }
+                          }
+                      }.start()
+                  }
+
                   label("Gemini API key")
                   val keyBox = EditText(this)
                   keyBox.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -2275,6 +2299,11 @@ jobs:
                   wake.isChecked = prefs.getBoolean("wake", false)
                   col.addView(wake)
 
+                  val offlineCmd = CheckBox(this)
+                  offlineCmd.text = "Offline awaaz commands (Vosk, sirf Hindi lafz, tajurba; band rakhna behtar)"
+                  offlineCmd.isChecked = prefs.getBoolean("offlineCmd", false)
+                  col.addView(offlineCmd)
+
                   val voice = CheckBox(this)
                   voice.text = "Awaz mein jawab (Hindi voice)"
                   voice.isChecked = prefs.getBoolean("voice", true)
@@ -2293,6 +2322,7 @@ jobs:
                           .putString("model2", model2Box.text.toString().trim())
                           .putString("wakeWords", wakeBox.text.toString().trim().ifEmpty { WakeService.DEFAULT_WORDS })
                           .putBoolean("wake", wake.isChecked)
+                          .putBoolean("offlineCmd", offlineCmd.isChecked)
                           .putBoolean("voice", voice.isChecked)
                           .putBoolean("bubble", bubble.isChecked)
                           .apply()
@@ -2439,8 +2469,10 @@ jobs:
           cat > app/src/main/java/com/waqas/mj/Recorder.kt <<'MJEOF'
           package com.waqas.mj
 
+          import android.media.AudioAttributes
           import android.media.AudioFormat
           import android.media.AudioRecord
+          import android.media.AudioTrack
           import android.media.MediaRecorder
           import java.io.ByteArrayOutputStream
           import kotlin.math.abs
@@ -2461,13 +2493,17 @@ jobs:
 
               private const val RATE = 16000
 
+              /** What the last recording looked like (length and loudness), for the log. */
+              @Volatile
+              var lastInfo = ""
+
               /** Opens a 16 kHz mono microphone, or null if Android refuses. */
               fun open(): AudioRecord? {
                   val minBuf = AudioRecord.getMinBufferSize(
                       RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
                   )
                   if (minBuf <= 0) return null
-                  val bufBytes = max(minBuf, (RATE / 10) * 2 * 4)
+                  val bufBytes = max(minBuf, RATE * 2)
                   val sources = intArrayOf(MediaRecorder.AudioSource.VOICE_RECOGNITION, MediaRecorder.AudioSource.MIC)
                   for (src in sources) {
                       try {
@@ -2557,7 +2593,58 @@ jobs:
                       r.release()
                   }
                   if (!started || cancelled()) return Rec(null, false)
-                  return Rec(wav(pcm.toByteArray()), false)
+                  val bytes = pcm.toByteArray()
+                  lastInfo = "" + (bytes.size / 32) + " ms, loudness " + peak + " (theek: 4000 se upar)"
+                  amplify(bytes, peak)
+                  return Rec(wav(bytes), false)
+              }
+
+              /** Quiet or distant speech is made louder (at most 6x) so Gemini hears it clearly. */
+              private fun amplify(b: ByteArray, peak: Int) {
+                  if (peak < 1 || peak > 12000) return
+                  val gain = minOf(6.0, 20000.0 / peak)
+                  var i = 0
+                  while (i + 1 < b.size) {
+                      val s = (b[i].toInt() and 0xFF) or (b[i + 1].toInt() shl 8)
+                      val v = (s * gain).toInt().coerceIn(-32768, 32767)
+                      b[i] = (v and 0xFF).toByte()
+                      b[i + 1] = ((v shr 8) and 0xFF).toByte()
+                      i += 2
+                  }
+              }
+
+              /** Plays a recording back, so the user can hear exactly what MJ heard. */
+              fun playWav(wav: ByteArray) {
+                  if (wav.size <= 44) return
+                  val n = wav.size - 44
+                  val t = AudioTrack.Builder()
+                      .setAudioAttributes(
+                          AudioAttributes.Builder()
+                              .setUsage(AudioAttributes.USAGE_MEDIA)
+                              .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                              .build()
+                      )
+                      .setAudioFormat(
+                          AudioFormat.Builder()
+                              .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                              .setSampleRate(RATE)
+                              .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                              .build()
+                      )
+                      .setBufferSizeInBytes(n)
+                      .setTransferMode(AudioTrack.MODE_STATIC)
+                      .build()
+                  try {
+                      t.write(wav, 44, n)
+                      t.play()
+                      Thread.sleep(n / 32L + 400L)
+                  } finally {
+                      try {
+                          t.stop()
+                      } catch (e: Exception) {
+                      }
+                      t.release()
+                  }
               }
 
               private fun wav(pcm: ByteArray): ByteArray {
@@ -2656,21 +2743,42 @@ jobs:
           import java.io.FileOutputStream
           import java.util.zip.ZipInputStream
 
-          /** Collects what Vosk recognises while audio is being recorded. */
+          /**
+           * Collects what Vosk recognises while audio is being recorded.
+           * Vosk works on its own thread, so a slow phone can never make the recorder lose audio.
+           */
           class VoskSession(private val rec: Recognizer) {
               private val sb = StringBuilder()
-
-              fun feed(buf: ShortArray, n: Int) {
+              private val q = java.util.concurrent.LinkedBlockingQueue<ShortArray>()
+              private val worker = Thread {
                   try {
-                      if (rec.acceptWaveForm(buf, n)) {
-                          val t = VoskHelper.text(rec.getResult())
-                          if (t.isNotEmpty()) sb.append(t).append(' ')
+                      while (true) {
+                          val b = q.take()
+                          if (b.isEmpty()) break
+                          if (rec.acceptWaveForm(b, b.size)) {
+                              val t = VoskHelper.text(rec.getResult())
+                              if (t.isNotEmpty()) sb.append(t).append(' ')
+                          }
                       }
                   } catch (e: Exception) {
                   }
               }
 
+              init {
+                  worker.start()
+              }
+
+              fun feed(buf: ShortArray, n: Int) {
+                  q.offer(buf.copyOf(n))
+              }
+
               fun finish(): String {
+                  q.offer(ShortArray(0))
+                  try {
+                      worker.join(5000)
+                  } catch (e: InterruptedException) {
+                  }
+                  if (worker.isAlive) return sb.toString().trim()
                   try {
                       val t = VoskHelper.text(rec.getFinalResult())
                       if (t.isNotEmpty()) sb.append(t)
