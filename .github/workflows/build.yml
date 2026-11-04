@@ -44,8 +44,8 @@ jobs:
                   applicationId = "com.waqas.mj"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 9
-                  versionName = "1.6"
+                  versionCode = 11
+                  versionName = "1.7"
               }
 
               // One fixed key for every build, so a new APK installs over the old one.
@@ -95,6 +95,7 @@ jobs:
               <uses-permission android:name="android.permission.READ_CONTACTS" />
               <uses-permission android:name="android.permission.CALL_PHONE" />
               <uses-permission android:name="android.permission.SEND_SMS" />
+              <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
               <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
               <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
               <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
@@ -206,6 +207,9 @@ jobs:
           - whatsapp_chat: name, number (optional), text (optional). Opens that person's WhatsApp chat directly. With text, MJ types the message and presses Send itself, exactly once: never press Send yourself.
           - share_latest: name, number (optional), kind (photo or video), text (optional caption). Sends the newest photo or video from the gallery to that person on WhatsApp; MJ presses Send itself, once.
           - watch: text (what to wait for, e.g. "the generated image is ready"), seconds (max time to wait, default 120, max 600). MJ keeps looking at the screen by itself and comes back when it happened or time ran out. Use it for anything that takes a while.
+          - alarm: hour (0-23), minute (0-59), text (label, optional). Sets an alarm at the next such time. For a reminder use the alarm with the reminder as text.
+          - timer: seconds (total length), text (label, optional)
+          - look: text (the question). MJ takes a screenshot and a vision model answers the question about what the picture shows (photos, images, anything not readable as text). The answer comes back in ACTIONS SO FAR; then call done with it.
           - long_press: id
           - hold: id, seconds (press and hold; on the WhatsApp microphone button it records a voice note: seconds = how long the user wants to talk, default 10, max 55; letting go sends it)
           - send_sms: name, number (optional), text. Sends an SMS by itself, one time.
@@ -228,7 +232,7 @@ jobs:
           2. Use element ids from the current screen list only. Ids change every turn. tap and type always need an id.
           3. If the last action says "screen did not change", do NOT repeat it. Try another element, scroll, or a different approach.
           4. Be efficient. Most tasks need 1 to 5 actions. Never tap things that the task does not need. After open_app or a search the screen has already settled; only if the list is nearly empty or shows a loading spinner, use wait once.
-          5. Playing something on YouTube: after youtube_search the results are on screen. Tap the best matching real video at once (not an ad, not a Shorts shelf), then check the next screen.
+          5. Playing something on YouTube: after youtube_search the results are on screen. Tap the best matching real video at once (not an ad, not a Shorts shelf), then check the next screen. Never tap the search box, never press enter and never call youtube_search a second time: the results are already there.
           6. Music or video player apps such as VLC: open_app, use the search icon or field, type the song name, tap the matching result.
           7. People and messages: to call a person use call_contact; to open a person's WhatsApp chat or to send a WhatsApp message use whatsapp_chat; to send an SMS use send_sms. These find the contact by name and, if the person has several numbers, ask the user which one. Never open a chat by tapping a profile photo, avatar or picture: that opens the picture, not the chat. Only if the action says the contact was not found, fall back to the app: search the name, tap the row with the NAME text (not the photo), and only inside the chat (name at the top and a message box) type the message and tap Send. After type, the result shows what the field now contains; check it.
           8. Questions about a place, route or distance: use maps with route true, then read the distance and time from the screen and put them in done.message.
@@ -241,19 +245,41 @@ jobs:
           15. A photo or video to a person: take it first (open_app Camera, tap the shutter button), then call share_latest. Never try to send it by tapping around inside WhatsApp.
           16. A voice note: whatsapp_chat without text, then find the microphone button (labelled Voice message) on the screen and hold on it for the seconds the user wants. Do not use say or wait while recording. After hold, check the screen and call done.
           17. Reacting to a message (heart, like and so on): long_press the message bubble, then tap the emoji on the bar that appears (the heart is the red one).
-          18. Never promise to tell the user later: you cannot speak after done. For long work (an AI app making an image, a download, an upload, a render) do the steps (open the app, type the request, press send once), then use watch with what to wait for, then look at the result on screen and call done with what it shows. Do not call done before the work is really finished unless watch timed out.
+          18. Never promise to tell the user later: you cannot speak after done. For long work (an AI app making an image, a download, an upload, a render) do the steps (open the app, type the request, press send once), then use watch with text describing the FINISHED result (for example "the generated image is shown"), never a button that exists while it is still working, then look at the result on screen and call done with what it shows. Do not call done before the work is really finished unless watch timed out.
           19. If the user asks you to do something inside another AI app (Gemini, ChatGPT, Claude, Meta AI), open it, type the request in its message box, press its send button once, then watch.
           20. Opening an app is done once per task. If you already opened it, never open it again: look at the screen and work from there.
-          21. Output only the JSON object and nothing else.
+          21. Alarm, reminder or timer: use alarm or timer at once, using NOW to work out the clock time ("in 20 minutes" means NOW plus 20 minutes; "morning" without an hour means 7). They are direct actions: after one succeeds call done.
+          22. Questions about what is on the screen (read this, translate this, what does this say): answer from SCREEN ELEMENTS in done.message and done.speak, no other action. If the answer needs the actual picture (what is in this photo or image), use look first.
+          23. Reading notifications: use notifications, then read the shade from SCREEN ELEMENTS and put the senders and messages in done.message, then use back. Replying to a notification: tap the notification row, then work inside that app.
+          24. Output only the JSON object and nothing else.
           """
 
               private val ACTIONS = listOf(
                   "flashlight", "open_app", "youtube_search", "web_search", "maps", "open_settings", "call",
-                  "call_contact", "whatsapp_chat", "send_sms", "share_latest", "long_press", "hold", "watch",
+                  "call_contact", "whatsapp_chat", "send_sms", "share_latest", "long_press", "hold", "watch", "alarm", "timer", "look",
                   "volume", "brightness", "lock_screen", "screenshot", "quick_settings",
                   "tap", "type", "enter", "scroll", "back", "home", "recents", "notifications",
                   "wait", "say", "done"
               )
+
+              @Volatile
+              private var aborted = false
+
+              @Volatile
+              private var conn: HttpURLConnection? = null
+
+              /** STOP: cut the running network call at once so MJ stops without waiting. */
+              fun abort() {
+                  aborted = true
+                  try {
+                      conn?.disconnect()
+                  } catch (e: Exception) {
+                  }
+              }
+
+              fun reset() {
+                  aborted = false
+              }
 
               private class SchemaRejected : RuntimeException()
               private class Retry(msg: String) : RuntimeException(msg)
@@ -277,6 +303,8 @@ jobs:
                       .put("on", bool())
                       .put("route", bool())
                       .put("seconds", int())
+                      .put("hour", int())
+                      .put("minute", int())
                       .put("level", int())
                       .put("ms", int())
                       .put("message", str())
@@ -387,6 +415,26 @@ jobs:
                   return r.optInt("choice", 0)
               }
 
+              /** A vision answer about a screenshot. */
+              fun look(key: String, model: String, question: String, jpeg: ByteArray): String {
+                  val img = JSONObject().put(
+                      "inlineData",
+                      JSONObject().put("mimeType", "image/jpeg").put("data", Base64.encodeToString(jpeg, Base64.NO_WRAP))
+                  )
+                  val parts = JSONArray().put(img).put(
+                      JSONObject().put(
+                          "text",
+                          "Question about this phone screen: " + question +
+                              "\nAnswer in 1 to 3 short sentences in Roman Urdu (Latin letters). Answer with JSON {\"answer\": text}."
+                      )
+                  )
+                  val schema = JSONObject().put("type", "OBJECT")
+                      .put("properties", JSONObject().put("answer", str()))
+                      .put("required", JSONArray().put("answer"))
+                  val r = post(key, model, "You look at a phone screenshot and answer the question. Output only JSON.", parts, schema)
+                  return r.optString("answer", "")
+              }
+
               /** Is the thing we are waiting for visible on this screen yet? */
               fun check(key: String, model: String, what: String, snap: ScreenSnapshot): Boolean {
                   val q = "WAITING FOR: " + what + "\nCURRENT APP: " + snap.pkg + "\nSCREEN ELEMENTS:\n" + snap.text +
@@ -408,6 +456,7 @@ jobs:
                   snap: ScreenSnapshot
               ): JSONObject {
                   val prompt = buildString {
+                      append("NOW: ").append(java.text.SimpleDateFormat("EEEE d MMM yyyy, HH:mm", java.util.Locale.ENGLISH).format(java.util.Date())).append("\n")
                       append("CURRENT TASK: ").append(task).append("\n")
                       append("ALREADY DONE (do not repeat): ")
                       append(if (before.isEmpty()) "(none)" else before.joinToString("; ")).append("\n")
@@ -458,6 +507,7 @@ jobs:
                   var useSchema = schema != null
                   var last: Exception? = null
                   for (attempt in 0..3) {
+                      if (aborted) throw RuntimeException("roka gaya")
                       try {
                           return postOnce(key, model, system, parts, if (useSchema) schema else null)
                       } catch (e: SchemaRejected) {
@@ -494,6 +544,7 @@ jobs:
 
                   val url = URL("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
                   val c = url.openConnection() as HttpURLConnection
+                  conn = c
                   try {
                       c.requestMethod = "POST"
                       c.connectTimeout = 12000
@@ -546,6 +597,7 @@ jobs:
           import android.media.AudioManager
           import android.net.Uri
           import android.os.Build
+          import android.provider.AlarmClock
           import android.provider.ContactsContract
           import android.provider.MediaStore
           import android.provider.Settings
@@ -651,6 +703,37 @@ jobs:
                       "opened the chat with the latest " + (if (video) "video" else "photo") + " ready"
                   } catch (e: Exception) {
                       "cannot share to WhatsApp: ${e.message}"
+                  }
+              }
+
+              fun setAlarm(ctx: Context, hour: Int, minute: Int, label: String): String {
+                  if (hour !in 0..23 || minute !in 0..59) return "alarm error: waqt samajh nahi aaya"
+                  val i = Intent(AlarmClock.ACTION_SET_ALARM)
+                      .putExtra(AlarmClock.EXTRA_HOUR, hour)
+                      .putExtra(AlarmClock.EXTRA_MINUTES, minute)
+                      .putExtra(AlarmClock.EXTRA_MESSAGE, label)
+                      .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+                      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  return try {
+                      ctx.startActivity(i)
+                      "alarm set for %02d:%02d".format(hour, minute) + (if (label.isNotBlank()) " ($label)" else "")
+                  } catch (e: Exception) {
+                      "alarm error: ${e.message}"
+                  }
+              }
+
+              fun setTimer(ctx: Context, seconds: Int, label: String): String {
+                  if (seconds < 1) return "timer error: samay samajh nahi aaya"
+                  val i = Intent(AlarmClock.ACTION_SET_TIMER)
+                      .putExtra(AlarmClock.EXTRA_LENGTH, seconds)
+                      .putExtra(AlarmClock.EXTRA_MESSAGE, label)
+                      .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+                      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  return try {
+                      ctx.startActivity(i)
+                      "timer set for $seconds seconds" + (if (label.isNotBlank()) " ($label)" else "")
+                  } catch (e: Exception) {
+                      "timer error: ${e.message}"
                   }
               }
 
@@ -1126,6 +1209,7 @@ jobs:
           import android.accessibilityservice.GestureDescription
           import android.content.Intent
           import android.content.pm.PackageManager
+          import android.graphics.Bitmap
           import android.graphics.Color
           import android.graphics.Path
           import android.graphics.PixelFormat
@@ -1188,10 +1272,15 @@ jobs:
                       "delete|remove|erase|uninstall|format|factory|reset|unsend|\\bpay\\b|send money|transfer|purchase|\\bbuy\\b"
                   )
 
+                  private val ONCE = setOf(
+                      "youtube_search", "web_search", "maps", "whatsapp_chat", "call_contact",
+                      "send_sms", "share_latest", "call", "alarm", "timer"
+                  )
+
                   private val DIRECT = setOf(
                       "flashlight", "open_app", "youtube_search", "web_search", "call", "volume", "brightness",
                       "maps", "open_settings", "lock_screen", "screenshot", "quick_settings",
-                      "call_contact", "whatsapp_chat", "send_sms", "share_latest"
+                      "call_contact", "whatsapp_chat", "send_sms", "share_latest", "alarm", "timer"
                   )
 
                   /** While voice notes or media play or record, MJ must stay silent. */
@@ -1331,6 +1420,7 @@ jobs:
                       return
                   }
                   cancelled = false
+                  Brain.reset()
                   Thread {
                       try {
                           body()
@@ -1346,7 +1436,9 @@ jobs:
 
               private fun stopAll() {
                   cancelled = true
+                  Brain.abort()
                   emit("STOP dabaya")
+                  setStatus("Roka gaya")
                   tts?.stop()
                   speakLatch?.countDown()
               }
@@ -1714,6 +1806,10 @@ jobs:
                       forced = false
                       lastSig = sig
 
+                      if (action in ONCE && history.any { it.startsWith(action) && !failed(it) }) {
+                          history.add("$action $args -> BLOCKED: already done once in this task, look at the screen and call done")
+                          continue
+                      }
                       if (action == "open_app" && history.any { it.startsWith("open_app") }) {
                           history.add("open_app $args -> BLOCKED: app already opened in this task, work on the current screen")
                           continue
@@ -1725,7 +1821,12 @@ jobs:
                           val end = System.currentTimeMillis() + maxS * 1000L
                           var seen = false
                           while (System.currentTimeMillis() < end && !cancelled) {
-                              Thread.sleep(6000)
+                              var w = 0
+                              while (w < 12 && !cancelled) {
+                                  Thread.sleep(500)
+                                  w++
+                              }
+                              if (cancelled) break
                               val left = ((end - System.currentTimeMillis()) / 1000).toInt()
                               setStatus("Intezaar: $what ($left s baqi)")
                               val s2 = ScreenReader.read(rootInActiveWindow)
@@ -1958,6 +2059,50 @@ jobs:
                   return ok
               }
 
+              /** Screenshot (Android 11+) answered by the vision model. */
+              private fun look(question: String): String {
+                  if (Build.VERSION.SDK_INT < 30) return "look not supported on this Android version"
+                  val latch = CountDownLatch(1)
+                  var bmp: Bitmap? = null
+                  try {
+                      takeScreenshot(
+                          android.view.Display.DEFAULT_DISPLAY,
+                          mainExecutor,
+                          object : AccessibilityService.TakeScreenshotCallback {
+                              override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
+                                  try {
+                                      val hw = Bitmap.wrapHardwareBuffer(result.hardwareBuffer, result.colorSpace)
+                                      bmp = hw?.copy(Bitmap.Config.ARGB_8888, false)
+                                      hw?.recycle()
+                                      result.hardwareBuffer.close()
+                                  } catch (e: Exception) {
+                                  }
+                                  latch.countDown()
+                              }
+
+                              override fun onFailure(errorCode: Int) {
+                                  latch.countDown()
+                              }
+                          }
+                      )
+                  } catch (e: Exception) {
+                      return "look failed: ${e.message}"
+                  }
+                  latch.await(4, TimeUnit.SECONDS)
+                  val b = bmp ?: return "look failed: screenshot nahi mila (Accessibility dobara off/on karein)"
+                  val w = 720
+                  val h = (b.height * (w.toFloat() / b.width)).toInt().coerceAtLeast(1)
+                  val small = Bitmap.createScaledBitmap(b, w, h, true)
+                  val out = java.io.ByteArrayOutputStream()
+                  small.compress(Bitmap.CompressFormat.JPEG, 70, out)
+                  val ans = try {
+                      Brain.look(aiKey, aiModel, question, out.toByteArray())
+                  } catch (e: Exception) {
+                      return "look failed: ${e.message}"
+                  }
+                  return if (ans.isBlank()) "look failed: koi jawab nahi aaya" else "SCREEN ANSWER: $ans"
+              }
+
               private fun longPress(id: Int, snap: ScreenSnapshot): String {
                   val n = snap.nodes.getOrNull(id) ?: return "bad element id $id"
                   var t: AccessibilityNodeInfo? = n
@@ -1999,7 +2144,7 @@ jobs:
                           Thread.sleep(900)
                           waitStable(4000)
                       }
-                      "flashlight", "volume", "brightness", "say", "lock_screen", "screenshot", "send_sms" ->
+                      "flashlight", "volume", "brightness", "say", "lock_screen", "screenshot", "send_sms", "alarm", "timer", "look" ->
                           Thread.sleep(150)
                       else -> {
                           Thread.sleep(250)
@@ -2090,6 +2235,9 @@ jobs:
                       "whatsapp_chat" -> contactAction(a, "wa")
                       "send_sms" -> contactAction(a, "sms")
                       "share_latest" -> contactAction(a, "share")
+                      "alarm" -> Device.setAlarm(this, a.optInt("hour", -1), a.optInt("minute", 0), a.optString("text"))
+                      "timer" -> Device.setTimer(this, a.optInt("seconds", 0), a.optString("text"))
+                      "look" -> look(a.optString("text"))
                       "long_press" -> longPress(a.optInt("id", -1), snap)
                       "hold" -> holdPress(a.optInt("id", -1), a.optInt("seconds", 10), snap)
                       "volume" -> Device.volume(this, a.optString("direction"), a.optInt("level", -1))
@@ -3386,6 +3534,7 @@ jobs:
               android:accessibilityFeedbackType="feedbackGeneric"
               android:accessibilityFlags="flagRetrieveInteractiveWindows|flagIncludeNotImportantViews|flagReportViewIds"
               android:canPerformGestures="true"
+              android:canTakeScreenshot="true"
               android:canRetrieveWindowContent="true"
               android:notificationTimeout="100"
               android:description="@string/service_desc" />
