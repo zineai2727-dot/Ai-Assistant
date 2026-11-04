@@ -44,8 +44,8 @@ jobs:
                   applicationId = "com.waqas.mj"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 11
-                  versionName = "1.7"
+                  versionCode = 12
+                  versionName = "1.7.1"
               }
 
               // One fixed key for every build, so a new APK installs over the old one.
@@ -281,6 +281,13 @@ jobs:
                   aborted = false
               }
 
+              /** Set by MJService so network trouble shows in the log. */
+              @Volatile
+              var onLog: ((String) -> Unit)? = null
+
+              @Volatile
+              private var slowNet = false
+
               private class SchemaRejected : RuntimeException()
               private class Retry(msg: String) : RuntimeException(msg)
 
@@ -515,7 +522,14 @@ jobs:
                           last = e
                       } catch (e: Retry) {
                           last = e
-                          Thread.sleep(1200L * (attempt + 1))
+                          onLog?.invoke("Net/AI dobara koshish ${attempt + 1}: ${e.message}")
+                          Thread.sleep(500L * (attempt + 1))
+                      } catch (e: java.io.IOException) {
+                          if (aborted) throw RuntimeException("roka gaya")
+                          last = e
+                          slowNet = true
+                          if (attempt >= 1) throw RuntimeException("Net bohat slow ya atka hua hai, thori der baad try karein")
+                          onLog?.invoke("Net atak gaya (${e.javaClass.simpleName}), nayi connection se dobara koshish ${attempt + 1}")
                       }
                   }
                   throw RuntimeException(last?.message ?: "AI error")
@@ -547,8 +561,12 @@ jobs:
                   conn = c
                   try {
                       c.requestMethod = "POST"
-                      c.connectTimeout = 12000
-                      c.readTimeout = 45000
+                      c.connectTimeout = 8000
+                      c.readTimeout = 20000
+                      if (slowNet) {
+                          c.setRequestProperty("Connection", "close")
+                          c.useCaches = false
+                      }
                       c.doOutput = true
                       c.setRequestProperty("Content-Type", "application/json")
                       c.setRequestProperty("x-goog-api-key", key)
@@ -1584,6 +1602,8 @@ jobs:
                   val agentModel = (prefs.getString("model2", "") ?: "").ifBlank { model }
                   aiKey = key
                   aiModel = model
+                  Brain.onLog = { m -> emit(m) }
+                  val tU = System.currentTimeMillis()
 
                   if (text != null) {
                       setStatus("MJ: $text")
@@ -1616,6 +1636,8 @@ jobs:
                       return false
                   }
 
+                  val dU = System.currentTimeMillis() - tU
+                  if (dU > 5000) emit("Samajhne mein ${dU / 1000} second lage (net ya AI slow)")
                   val heard = u.optString("heard").ifBlank { text ?: "" }
                   val mode = u.optString("mode")
                   val reply = u.optString("reply").ifBlank { "Ji" }
@@ -3449,6 +3471,35 @@ jobs:
                   return raw.split(",").map { squash(it) }.filter { it.isNotEmpty() }
               }
 
+              /** True if the heard text holds the wake word, allowing one wrong letter in words of 5+ letters. */
+              private fun close(heard: String, word: String): Boolean {
+                  if (heard.contains(word)) return true
+                  if (word.length < 5) return false
+                  val n = word.length
+                  for (len in (n - 1)..(n + 1)) {
+                      var i = 0
+                      while (i + len <= heard.length) {
+                          if (edit(heard.substring(i, i + len), word) <= 1) return true
+                          i++
+                      }
+                  }
+                  return false
+              }
+
+              private fun edit(a: String, b: String): Int {
+                  var prev = IntArray(b.length + 1) { it }
+                  for (i in 1..a.length) {
+                      val cur = IntArray(b.length + 1)
+                      cur[0] = i
+                      for (j in 1..b.length) {
+                          val c = if (a[i - 1] == b[j - 1]) 0 else 1
+                          cur[j] = minOf(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + c)
+                      }
+                      prev = cur
+                  }
+                  return prev[b.length]
+              }
+
               private fun squash(s: String): String = s.lowercase().replace(Regex("[\\s.,!?।]"), "")
 
               private fun loop() {
@@ -3501,7 +3552,7 @@ jobs:
                           val txt = if (isFinal) VoskHelper.text(rec.getResult()) else VoskHelper.partial(rec.getPartialResult())
                           if (txt.isNotEmpty()) {
                               val s = squash(txt)
-                              if (wake.any { s.contains(it) }) return true
+                              if (wake.any { close(s, it) }) return true
                           }
                       }
                   } catch (e: Exception) {
