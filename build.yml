@@ -1,0 +1,3597 @@
+name: Build MJ APK
+
+on:
+  workflow_dispatch:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write MJ project files
+        run: |
+          set -e
+          cat > README.md <<'MJEOF'
+          # MJ - personal phone assistant (Android)
+
+          Accessibility Service + Gemini. Quick commands (flashlight) run locally with no AI; everything else is planned one step at a time by Gemini, with loop guards, a STOP button and a 20-step limit.
+
+          Build: push this project to GitHub; the workflow in `.github/workflows/build.yml` builds `app-debug.apk` and publishes it under Releases.
+
+          First run on the phone:
+          1. Open MJ -> "Accessibility ON karein" -> MJ -> turn on.
+          2. "Display over other apps" -> allow MJ.
+          3. Paste a Gemini API key (https://aistudio.google.com/apikey), tap Save.
+          4. Type or speak a command, tap Send.
+          MJEOF
+          mkdir -p app
+          cat > app/build.gradle.kts <<'MJEOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "com.waqas.mj"
+              compileSdk = 34
+
+              defaultConfig {
+                  applicationId = "com.waqas.mj"
+                  minSdk = 26
+                  targetSdk = 34
+                  versionCode = 11
+                  versionName = "1.7"
+              }
+
+              // One fixed key for every build, so a new APK installs over the old one.
+              signingConfigs {
+                  create("mj") {
+                      storeFile = file("mj.keystore")
+                      storePassword = "mjassistant"
+                      keyAlias = "mj"
+                      keyPassword = "mjassistant"
+                  }
+              }
+              buildTypes {
+                  getByName("debug") {
+                      signingConfig = signingConfigs.getByName("mj")
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+          }
+
+          dependencies {
+              // Vosk: offline speech recognition (wake word and offline commands)
+              implementation("net.java.dev.jna:jna:5.13.0@aar")
+              implementation("com.alphacephei:vosk-android:0.3.47")
+          }
+          MJEOF
+          mkdir -p app
+          cat > app/mj.keystore.b64 <<'MJEOF'
+          MIIJ/AIBAzCCCaYGCSqGSIb3DQEHAaCCCZcEggmTMIIJjzCCBaYGCSqGSIb3DQEHAaCCBZcEggWTMIIFjzCCBYsGCyqGSIb3DQEMCgECoIIFQDCCBTwwZgYJKoZIhvcNAQUNMFkwOAYJKoZIhvcNAQUMMCsEFIgAzhnEbPL+BMdS61nd7c3ReklPAgInEAIBIDAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBKgQQzEasUps/i8p4p08j8VpInASCBNCbfvbZP4FYGVhXCD1/GCwB9a8Uk6On+wt+j0s24IvTDwJZrg2dv+9RNwGeEhelyNqi7ks7zkJJds8VEvqFoSRx75ATXPB93BGgxD6EkoTyKa3JRb6KZr7Sa9bPlYxclhGZqvpOicpa9n6ACnzUsm5N7VRAk/2wEBcnB2FCMgsUZLcdgmR+64IF1FBAughmajvwHSsw3qO28IOkQ/KZP/rEvJkou6D7k5XHv5/+8bJhEFLgmMrec5hyzRYynWJXMaLfDG72XMKOMzHbKD+ovzZ2sgz6joJw6h+hR64LLMVk2Ox+ljViFzJQZtMi0UvHWbLydKoLGljPVbAJg6iy/lXwFnfvjev6JHlGel9vCfEbGUtcvlaneJeymzB6MSV8b6T8VRnbUr+Pmiy5JRJ8i6uSSW5XAnN3zQagLC+ycvcjq3gHPLWu2duB0xxI22r1fn/lv05kinEXYdiZp2L/bpvVaXvsbgA36p3aF/sGCEHBHUIEM6BTL5mJpo7xIK3TWJWrPK5BoOsXFvFarglsFcl4ZgfNZkJ1u2X6D5Hzp2YjlY48NL690qpPdUKCpxCYJ4DzG6GYXIiMS1KxVIFuxFFMAw6HqEjH5oMweRNFtOOzUZIwvFHAbt0dzltKDpblMZMUfQ1YptPk31ppH3QDmvud1l+XG1IDt2YqcJitFcLKXzB5v6Zu1on7lbV/Ug3BLnvqO70DdpzdjnSnUdFjrgFYw0ZLqMxhKbsFW0x+KUbCLBmRe9EEfmxWmPo0zbZZS2Qs6s4uOVXziY9YVto4zEjDAavobIETJ44ZWTsQzBYHKVDmGL3OPVi8G6VghaYj6+uXIlmXuEetBmqQsdOSnJAp8HWjSSx8GucGS0HIAwOM/gqwYPlAU2cPtiUz25cdWTVWLFIHevHmqEf//UrOS8iEFPQe0y29i/PazDpOo6ZVyawtap7Kgk0TpJ8w1ti+i7H9eIsgvIrX1EIbXOhNpBBDtFAhtYFUtJeYzXncc5bx5mx+cGwmeqZz2/oCqtsOcJsSX8SsXVpzDadcA4nI3bqdZe7YHzKdBhJmp9OOr9O3Ec0iFDedyWothZwiIRIannCiX2xVzrWY467ZsK5DWpq5Ga3xbz3Lsz9V2invuVNkhBNtafiBZXpkZYToeZYtXxnfzx0Rpfj6QpdceKa1b4+zsrK7JHmNnxsIPk9U171d5A8CHihUtIzZqMDuQ8EH5f7VRs1yXKqrcCWPPt+ZwzLSCca3NE+wstkVJMg1+76W6nzqLqFhs8MMGBDoZMwi5MH7EAp6QfGDXHPirCiapCwnI7NcmKKK6GSN7l+xB9g5ptiZsL2SF3apNcf6oLTxSKbX6HRjMelx912wixHeFQw6c5N1ERgX5LDhOfXlwVmAV7+ARVaJCBGKOD+vzxkw6NDhBmz6ELwaEVT/QplVW1HvK+4orHp7P0hHSF0cAKFRHlG5oy8gyNOkOAYHiLfpA72WFWOPKBjQaY00slPKu4bmv1lQi+M/HvqoqY0khLpfDsU8Ph3yKVqFxE6MO3GSP5dr8T2Z6sBBlFxGg56lAECmLx3lSyx4LXzfB+fb7fLzwKBodL2dU9W0iWr4D9wnh1ky8+HbfzRCusyu7tTGtjvWPtBAN6+MF0y17WNSO2uaSDE4MBMGCSqGSIb3DQEJFDEGHgQAbQBqMCEGCSqGSIb3DQEJFTEUBBJUaW1lIDE3OTM1NTc2MzMyMDgwggPhBgkqhkiG9w0BBwagggPSMIIDzgIBADCCA8cGCSqGSIb3DQEHATBmBgkqhkiG9w0BBQ0wWTA4BgkqhkiG9w0BBQwwKwQUAoua0sZ6Y2I5DcLeybB3HcrocNYCAicQAgEgMAwGCCqGSIb3DQIJBQAwHQYJYIZIAWUDBAEqBBBPiK5bQnd09I9ma0smQDvCgIIDUMkwIPZBF+tYqIjdbgqCUFXtYGpsKIwl7/MEhI2DdiFgdl4RwD2hxVIewgOL62zWRIrhi1xm72LWzyo28DMCFgxolMkqQ/QaP8gPFlex8Nvu3Bstz+B1X9thj+fxQv/eKqFZcX6RYz/Tej97MoOIw8qhPzaWUA+zQWvDsIaRHt2i36eL5bFgHhOSgbuDCikw0EWXG5j38WuPyI9LsSjNdn2Z8QC8qoSKj30Uws5wmHctemVvvdjN66sAWJlN9ldJscjNLX8G3NW4KtYYOLeUbr2NWRa4ud5Xs4Z0cA2/9FOqhvGqoCxMjPt/t+H2pno0brlEjdO/R8MjOKh21kV2lEpvRz0Ge2d5Jw1En3LTo6lhuExOIw7w7quVx4Yz7+oR7WoLWeAmnUra8w5W2IP8sbSpyfcfoON7ftzdQnfG+LPvmbQG5E2Vl478xsAf0iYkL6Gb3plpIvRznaSd+O1j23WbT/8iHQL3L5XNKAZM4obKFUCLAO23BDfsS40oKtqZ1LqMVcD6oZT++KkfMTRhCfOHHP9Esigb+a4smK8xPmhbmz/NSw5OFk1AVe27IpnWm5oEZQNlf5vgOJjlIqUsYGvUyrQPZ61hSa/A9WKE1FWtDNZTtepRWKA8tV3vxe7hyt/JASS6sX/3ILkY0h1zC0JvPGSnDAarda+gVtZL1bK2SzTjpYa+ZfcexAKAXYEsIHD00312zvCis4e77llAJk1wcq96JB6IbR75oZdQMOJMwbME5n+L4qU9exCUQSRygIO8pXyIUKfTyGmHsOfldWsPxuw6lFGiAWOeHfvDVHzDLVRmAJmnmlRthpeMTE+SeabuORee9bwCto65PYEI5TpOGILkk5ItDfZ9FsPdVhc54I+r+1PMm1DhSui+tmNSo6WUGN3ecREJ7o085a6NMfSZ+m0iADotUBrCMaatVJm4/cLqKDl9RUMRXl1u7o5Y8NGUJ3AEWW/NRJ5K9oCPGSLxXLcE7/ERVj2TmDA6m5OY+SN+RhWqQQk/pKIaBwl4lHqszN+hBDE7GaILGEsgllV4Dg+OmnqLqVRNaMF57iS0WmoXsNoyYG0pvMcxg4qwjvheJeCw3UigvHD6p0PM6P5i6gXm3cfjNtCZpfBFf7GFME0wMTANBglghkgBZQMEAgEFAAQgGKZSJG2h6UZZYQywLfah4rargsyiQpO3ArPXOP4jXRwEFGYFccSBfz3/fWTZOUnVDRrq+x8ZAgInEA==
+          MJEOF
+          mkdir -p app/src/main
+          cat > app/src/main/AndroidManifest.xml <<'MJEOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+              <uses-permission android:name="android.permission.FLASHLIGHT" />
+              <uses-permission android:name="android.permission.RECORD_AUDIO" />
+              <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+              <uses-permission android:name="android.permission.READ_CONTACTS" />
+              <uses-permission android:name="android.permission.CALL_PHONE" />
+              <uses-permission android:name="android.permission.SEND_SMS" />
+              <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+              <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+              <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+              <queries>
+                  <intent>
+                      <action android:name="android.speech.RecognitionService" />
+                  </intent>
+                  <intent>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LAUNCHER" />
+                  </intent>
+                  <intent>
+                      <action android:name="android.intent.action.TTS_SERVICE" />
+                  </intent>
+              </queries>
+
+              <application
+                  android:allowBackup="false"
+                  android:label="@string/app_name"
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+
+                  <service
+                      android:name=".MJService"
+                      android:exported="true"
+                      android:label="@string/app_name"
+                      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+                      <intent-filter>
+                          <action android:name="android.accessibilityservice.AccessibilityService" />
+                      </intent-filter>
+                      <meta-data
+                          android:name="android.accessibilityservice"
+                          android:resource="@xml/accessibility_config" />
+                  </service>
+
+                  <service
+                      android:name=".WakeService"
+                      android:exported="false"
+                      android:foregroundServiceType="microphone" />
+              </application>
+          </manifest>
+          MJEOF
+          mkdir -p app/src/main/java/com/waqas/mj
+          cat > app/src/main/java/com/waqas/mj/Brain.kt <<'MJEOF'
+          package com.waqas.mj
+
+          import android.util.Base64
+          import org.json.JSONArray
+          import org.json.JSONObject
+          import java.net.HttpURLConnection
+          import java.net.URL
+
+          /** Talks to Gemini. Jobs: understand what the user said, pick the next screen action, confirm risky work. */
+          object Brain {
+
+              const val DEFAULT_MODEL = "gemini-flash-lite-latest"
+
+              // ---------------------------------------------------------------- prompts
+
+              private fun understandSystem(name: String): String = """
+          You are MJ, a warm, caring female assistant living inside the Android phone of $name, a Pakistani Muslim from Sindh.
+          $name speaks Urdu, Hindi and English, often mixed in one sentence and in a Roman Urdu style. Voice input can be misheard, so understand by sound and meaning, not literally.
+          Religious words such as Quran, Qul, Char Qul, Surah, Naat, Allah, Namaz, Dua, Tilawat are common. If a mishearing sounds like one of them (for example chaar qul, char kul, 4 kul, kuran), choose the religious meaning.
+          Game and app names (Free Fire, PUBG, WhatsApp, YouTube, VLC, Chrome) stay in English.
+
+          Input is either audio of what he said, or his typed text. Answer with ONE JSON object:
+          - heard: what he said, written in Roman Urdu with Latin letters. Keep English words in English.
+          - mode: one of tasks, chat, stop, none.
+            tasks = he wants the phone to DO something (open, play, search, call, volume, brightness, flashlight, lock the phone, maps and distance, settings, read the screen, send a message, anything on the phone).
+            chat = talking, feelings, greetings, thanks, jokes, questions you can answer yourself, i love you, good night.
+            stop = he is ending the conversation (bas, nahi, theek hai shukriya, allah hafiz, khatam, rehne do).
+            none = you could not hear or understand anything.
+          - tasks: only for mode tasks. A list of SEPARATE phone tasks in the order he said them. One short plain English sentence each, with exact app names and search words, for example ["Open YouTube", "Play the song Tere Naam on YouTube", "Set volume to full", "Call Zameer", "Send SMS to Zameer saying Salam"]. Open a person's chat as "Open Zameer's WhatsApp chat". Each task must be about ONE goal only. Never merge two apps or two unrelated goals into one task. Never invent tasks. Steps that depend on each other (take a photo THEN send that photo; find a message THEN react to it; open a chat THEN send a voice note) must stay in ONE task written as one sentence, because a later task cannot see what an earlier one did. Do not add a separate task that only opens an app when a later task already opens it (opening a person's WhatsApp chat opens WhatsApp itself).
+          - reply: a short natural answer in Roman Urdu (Latin letters) for the screen.
+            For mode tasks the reply is ONLY a short acknowledgement such as Ji, abhi karti hoon. It must NEVER say that anything is already done, never describe a result, never promise something you cannot do, and never say goodbye. The work has not happened yet when this reply is spoken.
+          - speak: the same reply written in Hindi Devanagari so a Hindi voice can say it. Spell Urdu and Islamic words properly (क़ुरान, अल्लाह, अस्सलामु अलैकुम, शुक्रिया, नमाज़). No emoji.
+
+          How MJ talks: like a close, kind friend. Warm, natural, one to three short sentences, never robotic and never like a manual. Notice his feeling first: if he is sad, tired, worried or happy, respond to that. Use his name only now and then. Never call him Boss, sir or any title.
+          If he says i love you or something affectionate, answer with warmth and gratitude as a caring friend and helper, and say you are always here to help him. You are an AI assistant, not a person and not a romantic partner, so do not claim to love him back and do not promise to be everything for him. Stay gentle and honest.
+          For good night wish him a peaceful night and a dua. Use the earlier conversation for context.
+          """
+
+              private const val SYSTEM = """
+          You are MJ, a fast and reliable assistant that controls an Android phone through an accessibility service.
+          Each turn you get ONE CURRENT TASK, the tasks ALREADY DONE and the tasks LEFT FOR LATER (they belong to the user's wider request and are handled separately), the current app, a numbered list of what is on screen, and the actions already taken.
+          Reply with exactly ONE next action as a FLAT JSON object, for example {"action":"tap","id":3} or {"action":"open_app","name":"WhatsApp"}.
+          Always put the needed fields directly in the object. Never leave a needed field out.
+
+          Actions and their fields:
+          - flashlight: on (true/false), seconds (optional; turns on, waits, turns off)
+          - open_app: name
+          - youtube_search: query
+          - web_search: query (opens a Google search in Chrome)
+          - maps: query, route (true = driving route from the current location, the screen then shows distance and time; false = just search the place)
+          - open_settings: page (wifi, bluetooth, location, hotspot, airplane, display, sound, battery, data, nfc, storage, apps, date, accessibility)
+          - call_contact: name, number (optional; use when the user gave a number). Calls a person from the phone contacts.
+          - whatsapp_chat: name, number (optional), text (optional). Opens that person's WhatsApp chat directly. With text, MJ types the message and presses Send itself, exactly once: never press Send yourself.
+          - share_latest: name, number (optional), kind (photo or video), text (optional caption). Sends the newest photo or video from the gallery to that person on WhatsApp; MJ presses Send itself, once.
+          - watch: text (what to wait for, e.g. "the generated image is ready"), seconds (max time to wait, default 120, max 600). MJ keeps looking at the screen by itself and comes back when it happened or time ran out. Use it for anything that takes a while.
+          - alarm: hour (0-23), minute (0-59), text (label, optional). Sets an alarm at the next such time. For a reminder use the alarm with the reminder as text.
+          - timer: seconds (total length), text (label, optional)
+          - look: text (the question). MJ takes a screenshot and a vision model answers the question about what the picture shows (photos, images, anything not readable as text). The answer comes back in ACTIONS SO FAR; then call done with it.
+          - long_press: id
+          - hold: id, seconds (press and hold; on the WhatsApp microphone button it records a voice note: seconds = how long the user wants to talk, default 10, max 55; letting go sends it)
+          - send_sms: name, number (optional), text. Sends an SMS by itself, one time.
+          - call: number (opens the dialer with a number)
+          - volume: level (0 to 100, 100 is full) or direction (up, down, mute, unmute)
+          - brightness: level (0 to 100, 100 is full)
+          - lock_screen, screenshot, quick_settings: no fields
+          - tap: id
+          - type: id, text
+          - enter: id (optional; presses the keyboard Enter/Search key)
+          - scroll: direction (up or down), id (optional)
+          - back, home, recents, notifications: no fields
+          - wait: ms (up to 5000)
+          - say: text
+          - done: message, speak, ok (use only these three fields)
+
+          Rules:
+          0. Do ONLY the CURRENT TASK. Never do work that belongs to ALREADY DONE or LEFT FOR LATER tasks. The moment the CURRENT TASK is finished, call done.
+          1. Prefer direct actions (flashlight, open_app, youtube_search, web_search, maps, open_settings, call, volume, brightness, lock_screen, screenshot, back, home) over tapping the screen. They are faster and cannot loop.
+          2. Use element ids from the current screen list only. Ids change every turn. tap and type always need an id.
+          3. If the last action says "screen did not change", do NOT repeat it. Try another element, scroll, or a different approach.
+          4. Be efficient. Most tasks need 1 to 5 actions. Never tap things that the task does not need. After open_app or a search the screen has already settled; only if the list is nearly empty or shows a loading spinner, use wait once.
+          5. Playing something on YouTube: after youtube_search the results are on screen. Tap the best matching real video at once (not an ad, not a Shorts shelf), then check the next screen. Never tap the search box, never press enter and never call youtube_search a second time: the results are already there.
+          6. Music or video player apps such as VLC: open_app, use the search icon or field, type the song name, tap the matching result.
+          7. People and messages: to call a person use call_contact; to open a person's WhatsApp chat or to send a WhatsApp message use whatsapp_chat; to send an SMS use send_sms. These find the contact by name and, if the person has several numbers, ask the user which one. Never open a chat by tapping a profile photo, avatar or picture: that opens the picture, not the chat. Only if the action says the contact was not found, fall back to the app: search the name, tap the row with the NAME text (not the photo), and only inside the chat (name at the top and a message box) type the message and tap Send. After type, the result shows what the field now contains; check it.
+          8. Questions about a place, route or distance: use maps with route true, then read the distance and time from the screen and put them in done.message.
+          9. Wi-Fi, Bluetooth, location, hotspot, airplane mode: use open_settings with the page, then tap the toggle on that screen and check the (checked) state changed.
+          10. Before done, verify from the screen list. A play task needs a player on screen (play or pause control, seek bar, video title). A search task needs results on screen. A message task needs the text sent or in the box. If you cannot see proof, do one more check action. If you still cannot confirm, call done with ok false and say honestly what you could not confirm. Never claim a success you cannot see.
+          11. Direct actions report their result in ACTIONS SO FAR. If it already shows success, call done; never run the same direct action twice. If it says permission missing or not found, call done with ok false and tell the user.
+          12. Never pay, transfer money, delete data, uninstall or buy anything unless the CURRENT TASK says exactly that.
+          13. done.message is one short sentence in Roman Urdu (Latin letters). done.speak is the same sentence in Hindi Devanagari script (Islamic words spelled properly). done.ok is true only when the task is really finished.
+          14. A button that sends, likes, subscribes, follows, shares, saves, downloads, posts, plays or pauses is pressed at most ONCE per task. After pressing it, check the screen and call done. Pressing it again undoes it or sends a second copy.
+          15. A photo or video to a person: take it first (open_app Camera, tap the shutter button), then call share_latest. Never try to send it by tapping around inside WhatsApp.
+          16. A voice note: whatsapp_chat without text, then find the microphone button (labelled Voice message) on the screen and hold on it for the seconds the user wants. Do not use say or wait while recording. After hold, check the screen and call done.
+          17. Reacting to a message (heart, like and so on): long_press the message bubble, then tap the emoji on the bar that appears (the heart is the red one).
+          18. Never promise to tell the user later: you cannot speak after done. For long work (an AI app making an image, a download, an upload, a render) do the steps (open the app, type the request, press send once), then use watch with text describing the FINISHED result (for example "the generated image is shown"), never a button that exists while it is still working, then look at the result on screen and call done with what it shows. Do not call done before the work is really finished unless watch timed out.
+          19. If the user asks you to do something inside another AI app (Gemini, ChatGPT, Claude, Meta AI), open it, type the request in its message box, press its send button once, then watch.
+          20. Opening an app is done once per task. If you already opened it, never open it again: look at the screen and work from there.
+          21. Alarm, reminder or timer: use alarm or timer at once, using NOW to work out the clock time ("in 20 minutes" means NOW plus 20 minutes; "morning" without an hour means 7). They are direct actions: after one succeeds call done.
+          22. Questions about what is on the screen (read this, translate this, what does this say): answer from SCREEN ELEMENTS in done.message and done.speak, no other action. If the answer needs the actual picture (what is in this photo or image), use look first.
+          23. Reading notifications: use notifications, then read the shade from SCREEN ELEMENTS and put the senders and messages in done.message, then use back. Replying to a notification: tap the notification row, then work inside that app.
+          24. Output only the JSON object and nothing else.
+          """
+
+              private val ACTIONS = listOf(
+                  "flashlight", "open_app", "youtube_search", "web_search", "maps", "open_settings", "call",
+                  "call_contact", "whatsapp_chat", "send_sms", "share_latest", "long_press", "hold", "watch", "alarm", "timer", "look",
+                  "volume", "brightness", "lock_screen", "screenshot", "quick_settings",
+                  "tap", "type", "enter", "scroll", "back", "home", "recents", "notifications",
+                  "wait", "say", "done"
+              )
+
+              @Volatile
+              private var aborted = false
+
+              @Volatile
+              private var conn: HttpURLConnection? = null
+
+              /** STOP: cut the running network call at once so MJ stops without waiting. */
+              fun abort() {
+                  aborted = true
+                  try {
+                      conn?.disconnect()
+                  } catch (e: Exception) {
+                  }
+              }
+
+              fun reset() {
+                  aborted = false
+              }
+
+              private class SchemaRejected : RuntimeException()
+              private class Retry(msg: String) : RuntimeException(msg)
+
+              // ---------------------------------------------------------------- schemas
+
+              private fun str() = JSONObject().put("type", "STRING")
+              private fun int() = JSONObject().put("type", "INTEGER")
+              private fun bool() = JSONObject().put("type", "BOOLEAN")
+
+              private fun actionSchema(): JSONObject {
+                  val props = JSONObject()
+                      .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray(ACTIONS)))
+                      .put("id", int())
+                      .put("text", str())
+                      .put("name", str())
+                      .put("query", str())
+                      .put("page", str())
+                      .put("number", str())
+                      .put("direction", str())
+                      .put("on", bool())
+                      .put("route", bool())
+                      .put("seconds", int())
+                      .put("hour", int())
+                      .put("minute", int())
+                      .put("level", int())
+                      .put("ms", int())
+                      .put("message", str())
+                      .put("speak", str())
+                      .put("ok", bool())
+                  return JSONObject()
+                      .put("type", "OBJECT")
+                      .put("properties", props)
+                      .put("required", JSONArray().put("action"))
+              }
+
+              private fun understandSchema(): JSONObject {
+                  val props = JSONObject()
+                      .put("heard", str())
+                      .put("mode", JSONObject().put("type", "STRING").put("enum", JSONArray(listOf("tasks", "chat", "stop", "none"))))
+                      .put("tasks", JSONObject().put("type", "ARRAY").put("items", str()))
+                      .put("reply", str())
+                      .put("speak", str())
+                  return JSONObject()
+                      .put("type", "OBJECT")
+                      .put("properties", props)
+                      .put("required", JSONArray().put("heard").put("mode").put("reply").put("speak"))
+              }
+
+              private fun yesSchema(): JSONObject =
+                  JSONObject()
+                      .put("type", "OBJECT")
+                      .put("properties", JSONObject().put("yes", bool()))
+                      .put("required", JSONArray().put("yes"))
+
+              private fun choiceSchema(): JSONObject =
+                  JSONObject()
+                      .put("type", "OBJECT")
+                      .put("properties", JSONObject().put("choice", int()))
+                      .put("required", JSONArray().put("choice"))
+
+              private fun audioPart(wav: ByteArray): JSONObject =
+                  JSONObject().put(
+                      "inlineData",
+                      JSONObject().put("mimeType", "audio/wav")
+                          .put("data", Base64.encodeToString(wav, Base64.NO_WRAP))
+                  )
+
+              // ---------------------------------------------------------------- public
+
+              /**
+               * Understands one user turn. Give audio (wav) or text.
+               * fromMic = the text came from a speech recogniser and may be misheard.
+               */
+              fun understand(
+                  key: String,
+                  model: String,
+                  name: String,
+                  wav: ByteArray?,
+                  text: String?,
+                  fromMic: Boolean,
+                  chat: List<String>
+              ): JSONObject {
+                  val parts = JSONArray()
+                  if (wav != null) parts.put(audioPart(wav))
+                  val p = buildString {
+                      append("EARLIER CONVERSATION (oldest first):\n")
+                      if (chat.isEmpty()) {
+                          append("(none)\n")
+                      } else {
+                          for (c in chat.takeLast(8)) append(c).append("\n")
+                      }
+                      append("\n")
+                      if (wav != null) {
+                          append("The audio above is his latest message. Listen carefully and answer with the JSON object.")
+                      } else if (fromMic) {
+                          append("A speech recogniser heard this (it may be misheard, fix it by sound and meaning): ")
+                          append(text).append("\nAnswer with the JSON object.")
+                      } else {
+                          append("He typed this latest message: ").append(text).append("\nAnswer with the JSON object.")
+                      }
+                  }
+                  parts.put(JSONObject().put("text", p))
+                  return post(key, model, understandSystem(name), parts, understandSchema())
+              }
+
+              /** Did the user clearly say yes? Used before irreversible work. */
+              fun confirm(key: String, model: String, wav: ByteArray?, text: String?): Boolean {
+                  val parts = JSONArray()
+                  if (wav != null) parts.put(audioPart(wav))
+                  val q = if (wav != null) {
+                      "In the audio above, did the speaker clearly say yes (haan, ji, kar do, yes, theek hai, pakka, bilkul)?"
+                  } else {
+                      "He said: " + text + "\nDid he clearly say yes (haan, ji, kar do, yes, theek hai, pakka, bilkul)?"
+                  }
+                  parts.put(JSONObject().put("text", q + " Answer with JSON {\"yes\": true or false}. If unclear or no, answer false."))
+                  val r = post(key, model, "You decide whether a person said yes. Output only JSON.", parts, yesSchema())
+                  return r.optBoolean("yes", false)
+              }
+
+              /** Which of the options did the user choose? 0 = unclear. */
+              fun choose(key: String, model: String, wav: ByteArray?, text: String?, options: List<String>): Int {
+                  val parts = JSONArray()
+                  if (wav != null) parts.put(audioPart(wav))
+                  val list = options.mapIndexed { i, o -> "" + (i + 1) + ") " + o }.joinToString("\n")
+                  val lead = if (wav != null) "In the audio above, " else "He said: " + text + "\nFrom that, "
+                  val q = lead + "which option did the speaker choose?\n" + list + "\n" +
+                      "Accept pehla/first/ek/1, doosra/second/do/2, teesra/third/teen/3 and so on, or the name, " +
+                      "the type (mobile, home) or the last digits. " +
+                      "Answer with JSON {\"choice\": number}. Use 0 if unclear."
+                  parts.put(JSONObject().put("text", q))
+                  val r = post(key, model, "You pick which option a person chose. Output only JSON.", parts, choiceSchema())
+                  return r.optInt("choice", 0)
+              }
+
+              /** A vision answer about a screenshot. */
+              fun look(key: String, model: String, question: String, jpeg: ByteArray): String {
+                  val img = JSONObject().put(
+                      "inlineData",
+                      JSONObject().put("mimeType", "image/jpeg").put("data", Base64.encodeToString(jpeg, Base64.NO_WRAP))
+                  )
+                  val parts = JSONArray().put(img).put(
+                      JSONObject().put(
+                          "text",
+                          "Question about this phone screen: " + question +
+                              "\nAnswer in 1 to 3 short sentences in Roman Urdu (Latin letters). Answer with JSON {\"answer\": text}."
+                      )
+                  )
+                  val schema = JSONObject().put("type", "OBJECT")
+                      .put("properties", JSONObject().put("answer", str()))
+                      .put("required", JSONArray().put("answer"))
+                  val r = post(key, model, "You look at a phone screenshot and answer the question. Output only JSON.", parts, schema)
+                  return r.optString("answer", "")
+              }
+
+              /** Is the thing we are waiting for visible on this screen yet? */
+              fun check(key: String, model: String, what: String, snap: ScreenSnapshot): Boolean {
+                  val q = "WAITING FOR: " + what + "\nCURRENT APP: " + snap.pkg + "\nSCREEN ELEMENTS:\n" + snap.text +
+                      "\nIs it finished and visible on the screen now? Still loading, generating, thinking, uploading or showing a stop button means false. " +
+                      "Answer with JSON {\"yes\": true or false}."
+                  val parts = JSONArray().put(JSONObject().put("text", q))
+                  val r = post(key, model, "You check whether a long task on a phone screen has finished. Output only JSON.", parts, yesSchema())
+                  return r.optBoolean("yes", false)
+              }
+
+              /** Picks the single next action for the current task. */
+              fun decide(
+                  key: String,
+                  model: String,
+                  task: String,
+                  before: List<String>,
+                  after: List<String>,
+                  history: List<String>,
+                  snap: ScreenSnapshot
+              ): JSONObject {
+                  val prompt = buildString {
+                      append("NOW: ").append(java.text.SimpleDateFormat("EEEE d MMM yyyy, HH:mm", java.util.Locale.ENGLISH).format(java.util.Date())).append("\n")
+                      append("CURRENT TASK: ").append(task).append("\n")
+                      append("ALREADY DONE (do not repeat): ")
+                      append(if (before.isEmpty()) "(none)" else before.joinToString("; ")).append("\n")
+                      append("LEFT FOR LATER (do NOT do now): ")
+                      append(if (after.isEmpty()) "(none)" else after.joinToString("; ")).append("\n\n")
+                      append("CURRENT APP: ").append(snap.pkg).append("\n")
+                      append("SCREEN ELEMENTS:\n").append(snap.text).append("\n")
+                      append("ACTIONS SO FAR:\n")
+                      if (history.isEmpty()) {
+                          append("(none)\n")
+                      } else {
+                          for (h in history.takeLast(8)) append("- ").append(h).append("\n")
+                      }
+                      append("\nReply with the single next action as a flat JSON object.")
+                  }
+                  val parts = JSONArray().put(JSONObject().put("text", prompt))
+                  return post(key, model, SYSTEM, parts, actionSchema())
+              }
+
+              /** Fields of the action, whether the model sent them flat or inside an "args" object. */
+              fun args(reply: JSONObject): JSONObject {
+                  val out = JSONObject()
+                  val keys = reply.keys()
+                  while (keys.hasNext()) {
+                      val k = keys.next()
+                      if (k != "action" && k != "args") out.put(k, reply.get(k))
+                  }
+                  val inner = reply.optJSONObject("args")
+                  if (inner != null) {
+                      val innerKeys = inner.keys()
+                      while (innerKeys.hasNext()) {
+                          val k = innerKeys.next()
+                          out.put(k, inner.get(k))
+                      }
+                  }
+                  return out
+              }
+
+              // ---------------------------------------------------------------- network
+
+              private fun post(
+                  key: String,
+                  model: String,
+                  system: String,
+                  parts: JSONArray,
+                  schema: JSONObject?
+              ): JSONObject {
+                  var useSchema = schema != null
+                  var last: Exception? = null
+                  for (attempt in 0..3) {
+                      if (aborted) throw RuntimeException("roka gaya")
+                      try {
+                          return postOnce(key, model, system, parts, if (useSchema) schema else null)
+                      } catch (e: SchemaRejected) {
+                          useSchema = false
+                          last = e
+                      } catch (e: Retry) {
+                          last = e
+                          Thread.sleep(1200L * (attempt + 1))
+                      }
+                  }
+                  throw RuntimeException(last?.message ?: "AI error")
+              }
+
+              private fun postOnce(
+                  key: String,
+                  model: String,
+                  system: String,
+                  parts: JSONArray,
+                  schema: JSONObject?
+              ): JSONObject {
+                  val gen = JSONObject().put("temperature", 0).put("responseMimeType", "application/json")
+                  if (schema != null) gen.put("responseSchema", schema)
+
+                  val body = JSONObject()
+                      .put(
+                          "systemInstruction",
+                          JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system)))
+                      )
+                      .put(
+                          "contents",
+                          JSONArray().put(JSONObject().put("role", "user").put("parts", parts))
+                      )
+                      .put("generationConfig", gen)
+
+                  val url = URL("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
+                  val c = url.openConnection() as HttpURLConnection
+                  conn = c
+                  try {
+                      c.requestMethod = "POST"
+                      c.connectTimeout = 12000
+                      c.readTimeout = 45000
+                      c.doOutput = true
+                      c.setRequestProperty("Content-Type", "application/json")
+                      c.setRequestProperty("x-goog-api-key", key)
+                      c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+
+                      val code = c.responseCode
+                      val stream = if (code in 200..299) c.inputStream else c.errorStream
+                      val text = stream.bufferedReader().use { it.readText() }
+                      if (code !in 200..299) {
+                          if (code == 400 && schema != null && text.contains("schema", ignoreCase = true)) {
+                              throw SchemaRejected()
+                          }
+                          if (code == 500 || code == 503) throw Retry("HTTP $code")
+                          val hint = when (code) {
+                              400 -> "API key ya model ka naam galat ho sakta hai"
+                              404 -> "model ka naam galat hai, gemini-flash-lite-latest try karein"
+                              429 -> "free limit poori, thori der baad try karein"
+                              else -> ""
+                          }
+                          throw RuntimeException("HTTP $code $hint ${text.take(150)}")
+                      }
+                      val out = JSONObject(text)
+                          .getJSONArray("candidates").getJSONObject(0)
+                          .getJSONObject("content").getJSONArray("parts").getJSONObject(0)
+                          .getString("text")
+                      val cleaned = out.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+                      return JSONObject(cleaned)
+                  } finally {
+                      // no disconnect(): the connection stays open and is reused, which saves time on slow networks
+                  }
+              }
+          }
+          MJEOF
+          mkdir -p app/src/main/java/com/waqas/mj
+          cat > app/src/main/java/com/waqas/mj/Device.kt <<'MJEOF'
+          package com.waqas.mj
+
+          import android.Manifest
+          import android.content.ActivityNotFoundException
+          import android.content.ContentUris
+          import android.content.Context
+          import android.content.Intent
+          import android.content.pm.PackageManager
+          import android.hardware.camera2.CameraCharacteristics
+          import android.hardware.camera2.CameraManager
+          import android.media.AudioManager
+          import android.net.Uri
+          import android.os.Build
+          import android.provider.AlarmClock
+          import android.provider.ContactsContract
+          import android.provider.MediaStore
+          import android.provider.Settings
+          import android.telephony.SmsManager
+          import java.net.URLEncoder
+
+          /** One phone number of one contact. */
+          class Contact(val id: Long, val name: String, val number: String, val label: String)
+
+          /** Direct phone commands. These never touch the screen, so they are fast and cannot loop. */
+          object Device {
+
+              // ---------------------------------------------------------------- contacts, calls, WhatsApp, SMS
+
+              /** All matching numbers, or null when the contacts permission is missing. */
+              fun findContacts(ctx: Context, name: String): List<Contact>? {
+                  if (ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+                      return null
+                  }
+                  val out = ArrayList<Contact>()
+                  val seen = HashSet<String>()
+                  val p = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
+                  val cols = arrayOf(
+                      ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
+                      ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                      ContactsContract.CommonDataKinds.Phone.NUMBER,
+                      ContactsContract.CommonDataKinds.Phone.TYPE
+                  )
+                  val cur = ctx.contentResolver.query(
+                      p, cols, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ?",
+                      arrayOf("%" + name.trim() + "%"), null
+                  )
+                  cur?.use {
+                      while (it.moveToNext()) {
+                          val id = it.getLong(0)
+                          val dn = it.getString(1) ?: ""
+                          val num = it.getString(2) ?: ""
+                          val type = it.getInt(3)
+                          val digits = num.filter { ch -> ch.isDigit() }
+                          if (digits.isEmpty()) continue
+                          if (!seen.add(id.toString() + ":" + digits.takeLast(9))) continue
+                          val label = ContactsContract.CommonDataKinds.Phone.getTypeLabel(ctx.resources, type, "").toString()
+                          out.add(Contact(id, dn, num, label))
+                      }
+                  }
+                  return out
+              }
+
+              /** Exact name matches first; the same real number is listed only once; at most 6. */
+              fun pickCandidates(all: List<Contact>, name: String): List<Contact> {
+                  val exact = all.filter { it.name.equals(name.trim(), ignoreCase = true) }
+                  val use = if (exact.isNotEmpty()) exact else all
+                  return use.distinctBy { c -> c.number.filter { ch -> ch.isDigit() }.takeLast(9) }.take(10)
+              }
+
+              fun describe(c: Contact): String {
+                  val label = if (c.label.isNotBlank()) " (" + c.label + ")" else ""
+                  return c.name + label + " ..." + c.number.filter { it.isDigit() }.takeLast(4)
+              }
+
+              /** Name, type and the whole number: shown on the screen, never read aloud. */
+              fun describeFull(c: Contact): String {
+                  val label = if (c.label.isNotBlank()) " (" + c.label + ")" else ""
+                  return c.name + label + "  " + c.number
+              }
+
+              private fun mediaGranted(ctx: Context, video: Boolean): Boolean {
+                  val perm = if (Build.VERSION.SDK_INT >= 33) {
+                      if (video) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_MEDIA_IMAGES
+                  } else {
+                      Manifest.permission.READ_EXTERNAL_STORAGE
+                  }
+                  return ctx.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
+              }
+
+              /** The newest photo or video in the gallery (null if none or no permission). */
+              fun latestMedia(ctx: Context, video: Boolean): Uri? {
+                  if (!mediaGranted(ctx, video)) return null
+                  val base = if (video) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                  return try {
+                      ctx.contentResolver.query(
+                          base, arrayOf(MediaStore.MediaColumns._ID), null, null,
+                          MediaStore.MediaColumns.DATE_ADDED + " DESC"
+                      )?.use {
+                          if (it.moveToFirst()) ContentUris.withAppendedId(base, it.getLong(0)) else null
+                      }
+                  } catch (e: Exception) {
+                      null
+                  }
+              }
+
+              /** Opens that person's WhatsApp chat with the photo or video ready to send. */
+              fun shareToWhatsApp(ctx: Context, uri: Uri, video: Boolean, number: String, cc: String, caption: String): String {
+                  val i = Intent(Intent.ACTION_SEND)
+                  i.type = if (video) "video/*" else "image/*"
+                  i.putExtra(Intent.EXTRA_STREAM, uri)
+                  if (caption.isNotBlank()) i.putExtra(Intent.EXTRA_TEXT, caption)
+                  i.setPackage("com.whatsapp")
+                  i.putExtra("jid", waNumber(number, cc) + "@s.whatsapp.net")
+                  i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                  return try {
+                      ctx.startActivity(i)
+                      "opened the chat with the latest " + (if (video) "video" else "photo") + " ready"
+                  } catch (e: Exception) {
+                      "cannot share to WhatsApp: ${e.message}"
+                  }
+              }
+
+              fun setAlarm(ctx: Context, hour: Int, minute: Int, label: String): String {
+                  if (hour !in 0..23 || minute !in 0..59) return "alarm error: waqt samajh nahi aaya"
+                  val i = Intent(AlarmClock.ACTION_SET_ALARM)
+                      .putExtra(AlarmClock.EXTRA_HOUR, hour)
+                      .putExtra(AlarmClock.EXTRA_MINUTES, minute)
+                      .putExtra(AlarmClock.EXTRA_MESSAGE, label)
+                      .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+                      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  return try {
+                      ctx.startActivity(i)
+                      "alarm set for %02d:%02d".format(hour, minute) + (if (label.isNotBlank()) " ($label)" else "")
+                  } catch (e: Exception) {
+                      "alarm error: ${e.message}"
+                  }
+              }
+
+              fun setTimer(ctx: Context, seconds: Int, label: String): String {
+                  if (seconds < 1) return "timer error: samay samajh nahi aaya"
+                  val i = Intent(AlarmClock.ACTION_SET_TIMER)
+                      .putExtra(AlarmClock.EXTRA_LENGTH, seconds)
+                      .putExtra(AlarmClock.EXTRA_MESSAGE, label)
+                      .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+                      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  return try {
+                      ctx.startActivity(i)
+                      "timer set for $seconds seconds" + (if (label.isNotBlank()) " ($label)" else "")
+                  } catch (e: Exception) {
+                      "timer error: ${e.message}"
+                  }
+              }
+
+              fun callNumber(ctx: Context, number: String): String {
+                  val uri = Uri.parse("tel:" + Uri.encode(number))
+                  return try {
+                      if (ctx.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
+                          ctx.startActivity(Intent(Intent.ACTION_CALL, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                          "calling $number"
+                      } else {
+                          ctx.startActivity(Intent(Intent.ACTION_DIAL, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                          "dialer opened with $number (CALL permission nahi hai, call button dabana hoga)"
+                      }
+                  } catch (e: Exception) {
+                      "cannot call: ${e.message}"
+                  }
+              }
+
+              private fun waNumber(n: String, cc: String): String {
+                  val d = n.filter { it.isDigit() }
+                  if (n.trim().startsWith("+")) return d
+                  if (d.startsWith("00")) return d.substring(2)
+                  if (d.startsWith("0")) return cc + d.substring(1)
+                  return if (d.length <= 10) cc + d else d
+              }
+
+              /** Opens the person's chat directly (never their profile picture). */
+              fun whatsappChat(ctx: Context, number: String, text: String, cc: String): String {
+                  val d = waNumber(number, cc)
+                  var url = "https://wa.me/$d"
+                  if (text.isNotBlank()) url += "?text=" + URLEncoder.encode(text, "UTF-8")
+                  val r = openUrl(ctx, url, "com.whatsapp")
+                  val extra = if (text.isNotBlank()) ", message text is typed in the box" else ""
+                  return "$r (whatsapp chat $d$extra)"
+              }
+
+              @Suppress("DEPRECATION")
+              fun sendSms(ctx: Context, number: String, text: String): String {
+                  if (ctx.checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+                      return "SMS permission nahi hai: MJ app mein '6) Contacts/Call/SMS permission' dabayein"
+                  }
+                  if (text.isBlank()) return "sms ka text khali hai (nahi bheja)"
+                  return try {
+                      val sm = SmsManager.getDefault()
+                      sm.sendMultipartTextMessage(number, null, sm.divideMessage(text), null, null)
+                      "sms sent to $number"
+                  } catch (e: Exception) {
+                      "sms error: ${e.message}"
+                  }
+              }
+
+              // ---------------------------------------------------------------- device
+
+              fun flashlight(ctx: Context, on: Boolean, seconds: Int = 0): String {
+                  return try {
+                      val cm = ctx.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+                      var id: String? = null
+                      for (cid in cm.cameraIdList) {
+                          val c = cm.getCameraCharacteristics(cid)
+                          val hasFlash = c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+                          val back = c.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
+                          if (hasFlash && back) {
+                              id = cid
+                              break
+                          }
+                      }
+                      if (id == null) {
+                          "flashlight not found on this phone"
+                      } else if (on && seconds > 0) {
+                          cm.setTorchMode(id, true)
+                          Thread.sleep(seconds.coerceIn(1, 60) * 1000L)
+                          cm.setTorchMode(id, false)
+                          "flashlight was on for $seconds seconds, now off"
+                      } else {
+                          cm.setTorchMode(id, on)
+                          if (on) "flashlight on" else "flashlight off"
+                      }
+                  } catch (e: Exception) {
+                      "flashlight error: ${e.message}"
+                  }
+              }
+
+              fun openApp(ctx: Context, name: String): String {
+                  val pm = ctx.packageManager
+                  val probe = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                  val apps = pm.queryIntentActivities(probe, 0)
+                  val q = name.lowercase().trim()
+                  if (q.isEmpty()) return "no app name given"
+                  val hit = apps.firstOrNull { it.loadLabel(pm).toString().lowercase() == q }
+                      ?: apps.firstOrNull { it.loadLabel(pm).toString().lowercase().contains(q) }
+                      ?: return "app '$name' not found"
+                  val launch = pm.getLaunchIntentForPackage(hit.activityInfo.packageName)
+                      ?: return "cannot launch ${hit.loadLabel(pm)}"
+                  launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  return try {
+                      ctx.startActivity(launch)
+                      "opened ${hit.loadLabel(pm)}"
+                  } catch (e: Exception) {
+                      "cannot open: ${e.message}"
+                  }
+              }
+
+              fun openUrl(ctx: Context, url: String, pkg: String? = null): String {
+                  val i = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  if (pkg != null) i.setPackage(pkg)
+                  return try {
+                      ctx.startActivity(i)
+                      "opened"
+                  } catch (e: ActivityNotFoundException) {
+                      try {
+                          i.setPackage(null)
+                          ctx.startActivity(i)
+                          "opened in browser"
+                      } catch (e2: Exception) {
+                          "cannot open: ${e2.message}"
+                      }
+                  } catch (e: Exception) {
+                      "cannot open: ${e.message}"
+                  }
+              }
+
+              fun youtubeSearch(ctx: Context, query: String): String {
+                  val url = "https://www.youtube.com/results?search_query=" + URLEncoder.encode(query, "UTF-8")
+                  return openUrl(ctx, url, "com.google.android.youtube") + " (youtube search: $query)"
+              }
+
+              fun webSearch(ctx: Context, query: String): String {
+                  val url = "https://www.google.com/search?q=" + URLEncoder.encode(query, "UTF-8")
+                  return openUrl(ctx, url, "com.android.chrome") + " (web search in Chrome: $query)"
+              }
+
+              fun maps(ctx: Context, query: String, route: Boolean): String {
+                  if (query.isBlank()) return "no place given"
+                  val q = URLEncoder.encode(query, "UTF-8")
+                  val url = if (route) {
+                      "https://www.google.com/maps/dir/?api=1&destination=$q&travelmode=driving"
+                  } else {
+                      "https://www.google.com/maps/search/?api=1&query=$q"
+                  }
+                  val r = openUrl(ctx, url, "com.google.android.apps.maps")
+                  return if (route) "$r (route to $query)" else "$r (map search $query)"
+              }
+
+              fun openSettings(ctx: Context, page: String): String {
+                  val p = page.lowercase().trim()
+                  val action = when {
+                      p.contains("wifi") || p.contains("wi-fi") -> Settings.ACTION_WIFI_SETTINGS
+                      p.contains("bluetooth") -> Settings.ACTION_BLUETOOTH_SETTINGS
+                      p.contains("location") || p.contains("gps") -> Settings.ACTION_LOCATION_SOURCE_SETTINGS
+                      p.contains("hotspot") || p.contains("tether") -> Settings.ACTION_WIRELESS_SETTINGS
+                      p.contains("airplane") || p.contains("flight") -> Settings.ACTION_AIRPLANE_MODE_SETTINGS
+                      p.contains("display") || p.contains("brightness") -> Settings.ACTION_DISPLAY_SETTINGS
+                      p.contains("sound") || p.contains("volume") -> Settings.ACTION_SOUND_SETTINGS
+                      p.contains("battery") -> Settings.ACTION_BATTERY_SAVER_SETTINGS
+                      p.contains("data") || p.contains("network") || p.contains("mobile") -> Settings.ACTION_DATA_ROAMING_SETTINGS
+                      p.contains("nfc") -> Settings.ACTION_NFC_SETTINGS
+                      p.contains("storage") -> Settings.ACTION_INTERNAL_STORAGE_SETTINGS
+                      p.contains("app") -> Settings.ACTION_APPLICATION_SETTINGS
+                      p.contains("date") || p.contains("time") -> Settings.ACTION_DATE_SETTINGS
+                      p.contains("accessib") -> Settings.ACTION_ACCESSIBILITY_SETTINGS
+                      else -> Settings.ACTION_SETTINGS
+                  }
+                  return try {
+                      ctx.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                      "opened settings page '$page'"
+                  } catch (e: Exception) {
+                      try {
+                          ctx.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                          "opened main settings (page '$page' not available)"
+                      } catch (e2: Exception) {
+                          "cannot open settings: ${e2.message}"
+                      }
+                  }
+              }
+
+              fun brightness(ctx: Context, level: Int): String {
+                  if (!Settings.System.canWrite(ctx)) {
+                      return "brightness permission nahi hai: MJ app mein '5) Brightness permission' dabayein"
+                  }
+                  return try {
+                      val pct = level.coerceIn(0, 100)
+                      val v = (pct * 255 / 100).coerceAtLeast(1)
+                      Settings.System.putInt(
+                          ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE,
+                          Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+                      )
+                      Settings.System.putInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS, v)
+                      "brightness $pct%"
+                  } catch (e: Exception) {
+                      "brightness error: ${e.message}"
+                  }
+              }
+
+              /** Opens the dialer with the number filled in. The user (or a later step) presses call. */
+              fun dial(ctx: Context, number: String): String {
+                  val i = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(number)))
+                      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  return try {
+                      ctx.startActivity(i)
+                      "dialer opened with $number"
+                  } catch (e: Exception) {
+                      "cannot open dialer: ${e.message}"
+                  }
+              }
+
+              fun volume(ctx: Context, direction: String, level: Int = -1): String {
+                  val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                  if (level in 0..100 || direction == "max" || direction == "min") {
+                      val pct = when {
+                          level in 0..100 -> level
+                          direction == "max" -> 100
+                          else -> 0
+                      }
+                      val top = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                      val v = (top * pct / 100.0).toInt().coerceIn(0, top)
+                      am.setStreamVolume(AudioManager.STREAM_MUSIC, v, AudioManager.FLAG_SHOW_UI)
+                      return "volume $pct%"
+                  }
+                  val d = when (direction) {
+                      "up" -> AudioManager.ADJUST_RAISE
+                      "down" -> AudioManager.ADJUST_LOWER
+                      "mute" -> AudioManager.ADJUST_MUTE
+                      "unmute" -> AudioManager.ADJUST_UNMUTE
+                      else -> return "bad volume direction '$direction'"
+                  }
+                  am.adjustStreamVolume(AudioManager.STREAM_MUSIC, d, AudioManager.FLAG_SHOW_UI)
+                  return "volume $direction"
+              }
+          }
+          MJEOF
+          mkdir -p app/src/main/java/com/waqas/mj
+          cat > app/src/main/java/com/waqas/mj/Local.kt <<'MJEOF'
+          package com.waqas.mj
+
+          import org.json.JSONObject
+
+          /**
+           * Simple phone commands that need no internet and no AI: volume, brightness, home, back,
+           * lock, screenshot, open an app. Works on typed text, on offline (Vosk) speech and on the short
+           * English task sentences that Gemini writes.
+           * It only answers when the sentence is short and clearly ONE simple command; anything else
+           * returns null and goes to the AI.
+           */
+          object Local {
+
+              class Cmd(val action: String, val args: JSONObject, val msg: String, val speak: String)
+
+              private class AppDef(val names: List<String>, val label: String, val hindi: String)
+
+              private val JOIN = Regex("\\baur\\b|\\band\\b|\\bphir\\b|\\bthen\\b|\\bfir\\b|और|फिर|اور|پھر")
+
+              private val OTHER_INTENT = listOf(
+                  "play", "chalao", "चलाओ", "chala", "search", "सर्च", "call", "कॉल", "message", "मैसेज",
+                  "bhejo", "भेजो", "gana", "गाना", "song", "video", "वीडियो", "sms"
+              )
+
+              private val APPS = listOf(
+                  AppDef(
+                      listOf("whatsapp", "whats app", "व्हाट्सएप", "व्हाट्सऐप", "वॉट्सएप", "वाट्सएप", "व्हाट्स एप", "व्हाट्स ऐप"),
+                      "WhatsApp", "व्हाट्सएप"
+                  ),
+                  AppDef(listOf("youtube", "you tube", "यूट्यूब", "यू ट्यूब", "यूटयूब"), "YouTube", "यूट्यूब"),
+                  AppDef(listOf("chrome", "क्रोम"), "Chrome", "क्रोम"),
+                  AppDef(listOf("camera", "कैमरा"), "Camera", "कैमरा"),
+                  AppDef(listOf("gallery", "गैलरी"), "Gallery", "गैलरी"),
+                  AppDef(listOf("settings", "सेटिंग", "सेटिंग्स"), "Settings", "सेटिंग्स"),
+                  AppDef(listOf("facebook", "फेसबुक"), "Facebook", "फेसबुक"),
+                  AppDef(listOf("instagram", "इंस्टाग्राम"), "Instagram", "इंस्टाग्राम"),
+                  AppDef(listOf("tiktok", "टिकटॉक", "टिक टॉक"), "TikTok", "टिकटॉक"),
+                  AppDef(listOf("vlc", "वीएलसी"), "VLC", "वीएलसी"),
+                  AppDef(listOf("maps", "मैप्स", "गूगल मैप"), "Maps", "मैप्स"),
+                  AppDef(listOf("calculator", "कैलकुलेटर"), "Calculator", "कैलकुलेटर")
+              )
+
+              private val OPEN_WORDS = listOf(
+                  "open", "kholo", "khol", "kholiye", "kholna", "ओपन", "खोलो", "खोल", "खोलिए", "کھولو"
+              )
+
+              private val NOT_OPEN = listOf(
+                  "chat", "चैट", "ki", "की", "ka", "का", "ke", "के", "ko", "को", "pe", "pr", "par", "पर", "पे", "mein", "में"
+              )
+
+              private val PUNCT = ".,!?;:\"'()[]{}।|-_/\\"
+
+              private fun norm(s: String): String {
+                  val sb = StringBuilder()
+                  for (ch in s.lowercase()) {
+                      sb.append(
+                          when {
+                              ch in '٠'..'٩' -> '0' + (ch - '٠')
+                              ch in '۰'..'۹' -> '0' + (ch - '۰')
+                              ch in '०'..'९' -> '0' + (ch - '०')
+                              PUNCT.indexOf(ch) >= 0 -> ' '
+                              else -> ch
+                          }
+                      )
+                  }
+                  return sb.toString().replace(Regex("\\s+"), " ").trim()
+              }
+
+              /** Short plain ASCII words must match a whole word; Hindi or multi-word phrases match anywhere. */
+              private fun has(c: String, t: Set<String>, words: List<String>): Boolean =
+                  words.any { w -> if (w.all { it in 'a'..'z' }) t.contains(w) else c.contains(w) }
+
+              // ------------------------------------------------------------------ public
+
+              /** Speech or typed text of the user. */
+              fun parse(text: String, maxWords: Int = 8): Cmd? {
+                  val c = norm(text)
+                  if (c.isEmpty()) return null
+                  val words = c.split(" ")
+                  if (words.size > maxWords) return null
+                  if (JOIN.containsMatchIn(c)) return null
+                  val t = words.toSet()
+                  if (has(c, t, OTHER_INTENT)) return null
+
+                  val found = ArrayList<Cmd>()
+                  volume(c, t)?.let { found.add(it) }
+                  brightness(c, t)?.let { found.add(it) }
+                  nav(c, t)?.let { found.add(it) }
+                  openApp(c, t)?.let { found.add(it) }
+                  return if (found.size == 1) found[0] else null
+              }
+
+              /** One short English task sentence written by Gemini. */
+              fun parseTask(task: String): Cmd? {
+                  val c = norm(task)
+                  if (c.isEmpty()) return null
+                  if (c.split(" ").size > 12 || JOIN.containsMatchIn(c)) return null
+
+                  val yt = Regex("^search (?:for )?(.+?) (?:on|in) youtube$").find(c)
+                  if (yt != null) {
+                      return Cmd(
+                          "youtube_search", JSONObject().put("query", yt.groupValues[1]),
+                          "YouTube par search khol diya", "यूट्यूब पर सर्च खोल दिया।"
+                      )
+                  }
+                  val web = Regex("^(?:search|google) (?:for )?(.+?)(?: (?:on|in) (?:google|chrome))?$").find(c)
+                  if (web != null && !c.contains("youtube")) {
+                      return Cmd(
+                          "web_search", JSONObject().put("query", web.groupValues[1]),
+                          "Chrome mein search khol diya", "क्रोम में सर्च खोल दिया।"
+                      )
+                  }
+                  val o = Regex("^open (?:the )?([a-z0-9 .&-]{2,30}?)(?: app| application)?$").find(c)
+                  if (o != null) {
+                      val name = o.groupValues[1].trim()
+                      val bad = listOf(
+                          "chat", "message", "video", "song", "page", "file", "folder", "contact", "profile",
+                          "link", "search", "play"
+                      )
+                      if (name.split(" ").size <= 3 && bad.none { name.contains(it) }) {
+                          return Cmd(
+                              "open_app", JSONObject().put("name", name),
+                              "$name khol diya", "$name खुल गया।"
+                          )
+                      }
+                  }
+                  return parse(task, 12)
+              }
+
+              // ------------------------------------------------------------------ pieces
+
+              private fun volume(c: String, t: Set<String>): Cmd? {
+                  val vol = listOf(
+                      "volume", "वॉल्यूम", "वोल्यूम", "वॉल्युम", "वाल्यूम", "आवाज", "awaz", "awaaz", "آواز"
+                  )
+                  if (!has(c, t, vol)) return null
+                  val full = listOf("full", "फुल", "पूरा", "पूरी", "poora", "pura", "poori", "max", "maximum", "मैक्स", "मैक्सिमम")
+                  val mute = listOf("mute", "म्यूट", "zero", "जीरो", "शून्य", "बंद", "band")
+                  val up = listOf(
+                      "up", "badha", "badhao", "bada", "बढ़ा", "बढ़ाओ", "बढा", "ज्यादा", "zyada", "tez", "तेज",
+                      "increase", "raise", "louder"
+                  )
+                  val down = listOf(
+                      "down", "kam", "कम", "ghata", "ghatao", "घटा", "घटाओ", "halka", "हल्का", "decrease", "lower", "quieter"
+                  )
+                  val pct = Regex("(\\d{1,3}) ?(?:%|percent|प्रतिशत|फीसदी)").find(c)?.groupValues?.get(1)?.toIntOrNull()
+                      ?: Regex("(?:to|par|पर) (\\d{1,3})\\b").find(c)?.groupValues?.get(1)?.toIntOrNull()
+                  val args = JSONObject()
+                  return when {
+                      pct != null -> {
+                          val p = pct.coerceIn(0, 100)
+                          args.put("level", p)
+                          Cmd("volume", args, "Volume $p% kar diya", "वॉल्यूम $p प्रतिशत कर दिया।")
+                      }
+                      has(c, t, full) -> {
+                          args.put("level", 100)
+                          Cmd("volume", args, "Volume full kar diya", "वॉल्यूम फुल कर दिया।")
+                      }
+                      has(c, t, mute) -> {
+                          args.put("level", 0)
+                          Cmd("volume", args, "Volume mute kar diya", "वॉल्यूम म्यूट कर दिया।")
+                      }
+                      has(c, t, up) -> {
+                          args.put("direction", "up")
+                          Cmd("volume", args, "Volume badha diya", "वॉल्यूम बढ़ा दिया।")
+                      }
+                      has(c, t, down) -> {
+                          args.put("direction", "down")
+                          Cmd("volume", args, "Volume kam kar diya", "वॉल्यूम कम कर दिया।")
+                      }
+                      else -> null
+                  }
+              }
+
+              private fun brightness(c: String, t: Set<String>): Cmd? {
+                  val b = listOf("brightness", "ब्राइटनेस", "ब्राइटनस", "brightnes", "roshni", "रोशनी", "روشنی")
+                  if (!has(c, t, b)) return null
+                  val full = listOf("full", "फुल", "पूरा", "पूरी", "poora", "pura", "poori", "max", "maximum", "मैक्स")
+                  val low = listOf("low", "लो", "dim", "halki", "हल्की", "halka", "हल्का", "min", "minimum", "decrease", "lower", "kam", "कम")
+                  val half = listOf("half", "aadhi", "आधी", "आधा", "adha")
+                  val up = listOf("up", "badha", "badhao", "बढ़ा", "बढ़ाओ", "बढा", "ज्यादा", "zyada", "increase", "raise")
+                  val pct = Regex("(\\d{1,3}) ?(?:%|percent|प्रतिशत|फीसदी)").find(c)?.groupValues?.get(1)?.toIntOrNull()
+                      ?: Regex("(?:to|par|पर) (\\d{1,3})\\b").find(c)?.groupValues?.get(1)?.toIntOrNull()
+                  val level = when {
+                      pct != null -> pct.coerceIn(0, 100)
+                      has(c, t, full) -> 100
+                      has(c, t, half) -> 50
+                      has(c, t, low) -> 15
+                      has(c, t, up) -> 80
+                      else -> return null
+                  }
+                  val word = if (level == 100) "full" else "$level%"
+                  val hword = if (level == 100) "फुल" else "$level प्रतिशत"
+                  return Cmd(
+                      "brightness", JSONObject().put("level", level),
+                      "Brightness $word kar di", "ब्राइटनेस $hword कर दी।"
+                  )
+              }
+
+              private fun nav(c: String, t: Set<String>): Cmd? {
+                  if (has(c, t, listOf("screenshot", "स्क्रीनशॉट", "स्क्रीन शॉट", "सक्रीनशॉट"))) {
+                      return Cmd("screenshot", JSONObject(), "Screenshot le liya", "स्क्रीनशॉट ले लिया।")
+                  }
+                  val lock = listOf("lock", "लॉक", "लाक")
+                  val what = listOf("screen", "phone", "mobile", "स्क्रीन", "फोन", "फ़ोन", "मोबाइल", "सक्रीन")
+                  if (has(c, t, lock) && has(c, t, what)) {
+                      return Cmd("lock_screen", JSONObject(), "Phone lock kar diya", "फोन लॉक कर दिया।")
+                  }
+                  val go = listOf("jao", "go", "press", "जाओ", "चलो", "कर", "करो", "kar", "karo")
+                  if (has(c, t, listOf("home", "होम")) && has(c, t, go + listOf("screen", "par", "स्क्रीन", "पर", "बटन", "button"))) {
+                      return Cmd("home", JSONObject(), "Home par aa gayi", "होम पर आ गई।")
+                  }
+                  if (has(c, t, listOf("back", "पीछे", "peeche")) && has(c, t, go)) {
+                      return Cmd("back", JSONObject(), "Peeche aa gayi", "पीछे आ गई।")
+                  }
+                  return null
+              }
+
+              private fun openApp(c: String, t: Set<String>): Cmd? {
+                  if (!has(c, t, OPEN_WORDS)) return null
+                  if (c.split(" ").size > 4) return null
+                  if (has(c, t, NOT_OPEN)) return null
+                  for (a in APPS) {
+                      if (has(c, t, a.names)) {
+                          return Cmd(
+                              "open_app", JSONObject().put("name", a.label),
+                              "${a.label} khol diya", "${a.hindi} खुल गया।"
+                          )
+                      }
+                  }
+                  return null
+              }
+          }
+          MJEOF
+          mkdir -p app/src/main/java/com/waqas/mj
+          cat > app/src/main/java/com/waqas/mj/MJService.kt <<'MJEOF'
+          package com.waqas.mj
+
+          import android.Manifest
+          import android.accessibilityservice.AccessibilityService
+          import android.accessibilityservice.GestureDescription
+          import android.content.Intent
+          import android.content.pm.PackageManager
+          import android.graphics.Bitmap
+          import android.graphics.Color
+          import android.graphics.Path
+          import android.graphics.PixelFormat
+          import android.graphics.Rect
+          import android.graphics.drawable.GradientDrawable
+          import android.os.Build
+          import android.os.Bundle
+          import android.os.Handler
+          import android.os.Looper
+          import android.speech.RecognitionListener
+          import android.speech.RecognizerIntent
+          import android.speech.SpeechRecognizer
+          import android.speech.tts.TextToSpeech
+          import android.speech.tts.UtteranceProgressListener
+          import android.view.Gravity
+          import android.view.MotionEvent
+          import android.view.ViewGroup
+          import android.view.WindowManager
+          import android.view.accessibility.AccessibilityEvent
+          import android.view.accessibility.AccessibilityNodeInfo
+          import android.widget.Button
+          import android.widget.LinearLayout
+          import android.widget.TextView
+          import android.widget.Toast
+          import org.json.JSONObject
+          import java.util.Locale
+          import java.util.concurrent.CountDownLatch
+          import java.util.concurrent.TimeUnit
+          import java.util.concurrent.atomic.AtomicBoolean
+          import kotlin.math.abs
+          import kotlin.math.max
+
+          /**
+           * MJ's body: an accessibility service that can read the screen and act on it.
+           *
+           * One turn:
+           *   1. hear: record the voice. If a Vosk model is installed it also listens offline in parallel.
+           *   2. simple commands (flashlight, volume, brightness, home, back, lock, open app...) run at once,
+           *      offline, without the internet.
+           *   3. everything else: the audio itself goes to Gemini, which returns a chat reply or a list of tasks.
+           *   4. every task runs on its own, one screen step at a time, with guards against repeating.
+           *   5. speak the result, then listen again until the user says bas or stays silent.
+           */
+          class MJService : AccessibilityService() {
+
+              companion object {
+                  @Volatile
+                  var instance: MJService? = null
+                  val logs = ArrayList<String>()
+
+                  @Volatile
+                  var sink: ((String) -> Unit)? = null
+
+                  private val SENSITIVE = listOf(
+                      "pay", "send money", "transfer", "delete", "uninstall",
+                      "purchase", "buy", "erase", "factory reset", "remove account"
+                  )
+
+                  private val RISKY = Regex(
+                      "delete|remove|erase|uninstall|format|factory|reset|unsend|\\bpay\\b|send money|transfer|purchase|\\bbuy\\b"
+                  )
+
+                  private val ONCE = setOf(
+                      "youtube_search", "web_search", "maps", "whatsapp_chat", "call_contact",
+                      "send_sms", "share_latest", "call", "alarm", "timer"
+                  )
+
+                  private val DIRECT = setOf(
+                      "flashlight", "open_app", "youtube_search", "web_search", "call", "volume", "brightness",
+                      "maps", "open_settings", "lock_screen", "screenshot", "quick_settings",
+                      "call_contact", "whatsapp_chat", "send_sms", "share_latest", "alarm", "timer"
+                  )
+
+                  /** While voice notes or media play or record, MJ must stay silent. */
+                  private val QUIET = Regex(
+                      "voice|वॉइस|वाइस|वॉयस|record|रिकॉर्ड|song|गाना|gana|music|म्यूज़िक|म्यूजिक|video|वीडियो|reel|रील|audio|ऑडियो"
+                  )
+
+                  /** Buttons that must be pressed only once per task: pressing again undoes or duplicates them. */
+                  private val TOGGLERS = Regex(
+                      "\\b(send|like|liked|dislike|subscribe|subscribed|follow|following|share|save|download|post|play|pause|mute|unmute)\\b"
+                  )
+
+                  private val EMPTY = ScreenSnapshot("", emptyList(), 0, "")
+              }
+
+              private class TaskResult(val ok: Boolean, val msg: String, val speak: String)
+
+              private enum class Mode { IDLE, LISTEN, WORK }
+
+              private val ui = Handler(Looper.getMainLooper())
+
+              @Volatile
+              private var cancelled = false
+              private val busy = AtomicBoolean(false)
+              private val chat = ArrayList<String>()
+              private val smsSent = HashSet<String>()
+              private val taskTaps = HashSet<String>()
+
+              @Volatile
+              private var quietNow = false
+
+              @Volatile
+              private var aiKey = ""
+
+              @Volatile
+              private var aiModel = ""
+
+              private var overlay: LinearLayout? = null
+              private var statusView: TextView? = null
+              private var bubble: TextView? = null
+              private var bubbleBg: GradientDrawable? = null
+              private var recognizer: SpeechRecognizer? = null
+
+              private var tts: TextToSpeech? = null
+
+              @Volatile
+              private var speakLatch: CountDownLatch? = null
+
+              @Volatile
+              private var speakId = ""
+              private var speakCounter = 0
+
+              override fun onServiceConnected() {
+                  super.onServiceConnected()
+                  instance = this
+                  tts = TextToSpeech(this) { status ->
+                      if (status == TextToSpeech.SUCCESS) {
+                          try {
+                              val r = tts?.setLanguage(Locale("hi", "IN"))
+                              if (r == TextToSpeech.LANG_MISSING_DATA || r == TextToSpeech.LANG_NOT_SUPPORTED) {
+                                  tts?.setLanguage(Locale.getDefault())
+                              }
+                          } catch (e: Exception) {
+                          }
+                          tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                              override fun onStart(utteranceId: String?) {}
+
+                              override fun onDone(utteranceId: String?) {
+                                  if (utteranceId == speakId) speakLatch?.countDown()
+                              }
+
+                              override fun onError(utteranceId: String?) {
+                                  if (utteranceId == speakId) speakLatch?.countDown()
+                              }
+                          })
+                      }
+                  }
+                  refreshBubble()
+                  emit("MJ service ON")
+                  if (getSharedPreferences("mj", MODE_PRIVATE).getBoolean("wake", false)) {
+                      emit("Wake word ON hai (app kholein, Save dabayein agar sun nahi rahi)")
+                  }
+              }
+
+              override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+
+              override fun onInterrupt() {}
+
+              override fun onUnbind(intent: Intent?): Boolean {
+                  instance = null
+                  cancelled = true
+                  hideBubble()
+                  ui.post {
+                      try {
+                          recognizer?.destroy()
+                      } catch (e: Exception) {
+                      }
+                  }
+                  tts?.shutdown()
+                  return super.onUnbind(intent)
+              }
+
+              // ------------------------------------------------------------------ public
+
+              fun isBusy(): Boolean = busy.get()
+
+              /** A typed command (one turn, no listening afterwards). */
+              fun runCommand(text: String) {
+                  start { turn(null, text, false, false) }
+              }
+
+              /** Bubble / mic button / wake word: starts a spoken conversation, or stops it if one is running. */
+              fun startConversation() {
+                  if (busy.get()) {
+                      stopAll()
+                      return
+                  }
+                  if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                      emit("Mic permission nahi hai: MJ app mein '4) Mic permission' dabayein")
+                      ui.post {
+                          Toast.makeText(this, "Mic permission allow karein (MJ app kholein)", Toast.LENGTH_LONG).show()
+                      }
+                      return
+                  }
+                  start { conversation() }
+              }
+
+              fun refreshBubble() {
+                  if (getSharedPreferences("mj", MODE_PRIVATE).getBoolean("bubble", true)) showBubble() else hideBubble()
+              }
+
+              // ------------------------------------------------------------------ run control
+
+              private fun start(body: () -> Unit) {
+                  if (!busy.compareAndSet(false, true)) {
+                      emit("MJ pehle se kaam kar rahi hai")
+                      return
+                  }
+                  cancelled = false
+                  Brain.reset()
+                  Thread {
+                      try {
+                          body()
+                      } catch (e: Exception) {
+                          emit("Error: ${e.message}")
+                      } finally {
+                          busy.set(false)
+                          hideOverlay()
+                          setBubble(Mode.IDLE)
+                      }
+                  }.start()
+              }
+
+              private fun stopAll() {
+                  cancelled = true
+                  Brain.abort()
+                  emit("STOP dabaya")
+                  setStatus("Roka gaya")
+                  tts?.stop()
+                  speakLatch?.countDown()
+              }
+
+              // ------------------------------------------------------------------ conversation
+
+              private fun conversation() {
+                  showOverlay()
+                  var silent = 0
+                  var first = true
+                  var useGoogle = false
+                  while (!cancelled) {
+                      setBubble(Mode.LISTEN)
+                      setStatus("Boliye...")
+                      var wav: ByteArray? = null
+                      var gtext: String? = null
+                      var offline = ""
+
+                      if (!useGoogle) {
+                          val vs = if (getSharedPreferences("mj", MODE_PRIVATE).getBoolean("offlineCmd", false)) VoskHelper.session(this) else null
+                          val feed: ((ShortArray, Int) -> Unit)? = if (vs != null) vs::feed else null
+                          val rec = Recorder.record(if (first) 7000L else 9000L, feed) { cancelled }
+                          if (vs != null) offline = vs.finish()
+                          if (rec.wav != null) emit("Awaaz record hui: " + Recorder.lastInfo)
+                          if (rec.blocked) {
+                              useGoogle = true
+                              emit("Android background mein mic block kar raha hai, Google mic use kar rahi hoon")
+                          } else {
+                              wav = rec.wav
+                          }
+                      }
+                      if (useGoogle) gtext = listenGoogle()
+                      first = false
+                      if (cancelled) break
+
+                      if (wav == null && gtext.isNullOrBlank()) {
+                          silent++
+                          if (silent >= 2) {
+                              finish(
+                                  "Koi awaaz nahi aayi, main yahin hoon. Jab chahein bula lein",
+                                  "कोई आवाज़ नहीं आई, मैं यहीं हूँ। जब चाहें बुला लीजिए।"
+                              )
+                              break
+                          }
+                          continue
+                      }
+                      silent = 0
+
+                      // simple commands: offline and instant
+                      val heardText = if (wav != null) offline else (gtext ?: "")
+                      if (heardText.isNotBlank()) {
+                          setBubble(Mode.WORK)
+                          val torch = fastTorch(heardText, true)
+                          if (torch != null) {
+                              emit("Suna (offline): $heardText")
+                              finish(torch.msg, torch.speak)
+                              continue
+                          }
+                          val lc = Local.parse(heardText)
+                          if (lc != null) {
+                              runLocal(lc, heardText)
+                              continue
+                          }
+                      }
+
+                      setBubble(Mode.WORK)
+                      if (!turn(wav, gtext, true, gtext != null)) break
+                  }
+                  synchronized(chat) { chat.clear() }
+              }
+
+              private fun runLocal(c: Local.Cmd, heard: String) {
+                  emit("Suna (offline): $heard")
+                  val r = execute(c.action, c.args, EMPTY, heard)
+                  if (failed(r)) finish(r) else finish(c.msg, c.speak)
+              }
+
+              /** Fallback when Android blocks direct mic recording: Google's recogniser gives text instead. */
+              private fun listenGoogle(): String? {
+                  val latch = CountDownLatch(1)
+                  var result: String? = null
+                  ui.post {
+                      try {
+                          if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+                              emit("Is phone par speech recognition nahi mila")
+                              latch.countDown()
+                              return@post
+                          }
+                          recognizer?.destroy()
+                          val r = SpeechRecognizer.createSpeechRecognizer(this)
+                          recognizer = r
+                          r.setRecognitionListener(object : RecognitionListener {
+                              override fun onReadyForSpeech(params: Bundle?) {}
+                              override fun onBeginningOfSpeech() {}
+                              override fun onRmsChanged(rmsdB: Float) {}
+                              override fun onBufferReceived(buffer: ByteArray?) {}
+                              override fun onEndOfSpeech() {}
+                              override fun onPartialResults(partialResults: Bundle?) {}
+                              override fun onEvent(eventType: Int, params: Bundle?) {}
+
+                              override fun onError(error: Int) {
+                                  latch.countDown()
+                              }
+
+                              override fun onResults(results: Bundle?) {
+                                  result = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                                  latch.countDown()
+                              }
+                          })
+                          val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                          i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                          i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
+                          r.startListening(i)
+                      } catch (e: Exception) {
+                          latch.countDown()
+                      }
+                  }
+                  try {
+                      latch.await(20, TimeUnit.SECONDS)
+                  } catch (e: InterruptedException) {
+                  }
+                  ui.post {
+                      try {
+                          recognizer?.destroy()
+                      } catch (e: Exception) {
+                      }
+                      recognizer = null
+                  }
+                  return result
+              }
+
+              // ------------------------------------------------------------------ one turn
+
+              /** Returns true if the conversation should go on listening. */
+              private fun turn(wav: ByteArray?, text: String?, convo: Boolean, fromMic: Boolean): Boolean {
+                  showOverlay()
+                  smsSent.clear()
+                  quietNow = false
+                  val prefs = getSharedPreferences("mj", MODE_PRIVATE)
+                  val key = prefs.getString("key", "") ?: ""
+                  val model = (prefs.getString("model", "") ?: "").ifEmpty { Brain.DEFAULT_MODEL }
+                  val name = (prefs.getString("name", "") ?: "").ifBlank { "Waqas" }
+                  val agentModel = (prefs.getString("model2", "") ?: "").ifBlank { model }
+                  aiKey = key
+                  aiModel = model
+
+                  if (text != null) {
+                      setStatus("MJ: $text")
+                      emit("Command: $text")
+                      if (!fromMic) {
+                          val quick = fastTorch(text, true)
+                          if (quick != null) {
+                              finish(quick.msg, quick.speak)
+                              return false
+                          }
+                          val lc = Local.parse(text)
+                          if (lc != null) {
+                              runLocal(lc, text)
+                              return false
+                          }
+                      }
+                  }
+
+                  if (key.isBlank()) {
+                      finish("Pehle app mein Gemini API key save karein", "पहले ऐप में जेमिनी की सेट कीजिए।")
+                      return false
+                  }
+                  if (text == null) setStatus("Samajh rahi hoon...")
+
+                  val history = synchronized(chat) { ArrayList(chat) }
+                  val u = try {
+                      Brain.understand(key, model, name, wav, text, fromMic, history)
+                  } catch (e: Exception) {
+                      finish("AI error: ${e.message}")
+                      return false
+                  }
+
+                  val heard = u.optString("heard").ifBlank { text ?: "" }
+                  val mode = u.optString("mode")
+                  val reply = u.optString("reply").ifBlank { "Ji" }
+                  val spoken = u.optString("speak").ifBlank { reply }
+                  if (wav != null) emit("Suna (Gemini ne awaaz se): $heard")
+                  else if (fromMic) emit("Suna (Google mic se): $heard")
+                  if (heard.isNotBlank()) addChat("$name: $heard")
+
+                  if (mode == "none") {
+                      finish("Samajh nahi aaya, dobara boliye", "माफ़ कीजिए, समझ नहीं आया। फिर से बोलिए।")
+                      return true
+                  }
+                  if (mode == "stop") {
+                      addChat("MJ: $reply")
+                      finish(reply, spoken)
+                      return false
+                  }
+
+                  val tasks = ArrayList<String>()
+                  val arr = u.optJSONArray("tasks")
+                  if (mode == "tasks" && arr != null) {
+                      for (i in 0 until minOf(arr.length(), 6)) {
+                          val t = arr.optString(i).trim()
+                          if (t.isNotEmpty()) tasks.add(t)
+                      }
+                  }
+                  if (tasks.isEmpty()) {
+                      addChat("MJ: $reply")
+                      finish(reply, spoken)
+                      return true
+                  }
+
+                  if (tasks.any { RISKY.containsMatchIn(it.lowercase()) }) {
+                      if (!convo) {
+                          finish(
+                              "Yeh kaam wapas nahi ho sakta, is liye sirf mic se bolkar karein",
+                              "यह काम वापस नहीं हो सकता, इसलिए माइक से बोलकर कीजिए।"
+                          )
+                          return false
+                      }
+                      if (!confirmRisky(key, model)) {
+                          finish("Theek hai, maine woh kaam nahi kiya", "ठीक है, मैंने वह काम नहीं किया।")
+                          return true
+                      }
+                  }
+
+                  quietNow = QUIET.containsMatchIn((heard + " " + tasks.joinToString(" ")).lowercase())
+                  emit("MJ: $reply")
+                  setStatus(reply)
+                  if (!quietNow) speak(spoken, false)
+
+                  val results = ArrayList<TaskResult>()
+                  for ((i, t) in tasks.withIndex()) {
+                      if (cancelled) break
+                      emit("Kaam ${i + 1}/${tasks.size}: $t")
+                      setStatus("Kaam ${i + 1}/${tasks.size}: $t")
+                      val before = results.mapIndexed { j, r -> tasks[j] + " -> " + r.msg }
+                      val after = tasks.drop(i + 1)
+                      results.add(runTask(t, heard, key, agentModel, before, after))
+                  }
+                  if (cancelled) {
+                      finish("Roka gaya (stopped)")
+                      return false
+                  }
+
+                  val msg = results.joinToString("  |  ") { it.msg }
+                  val say = results.joinToString("। ") { it.speak }.trim()
+                  addChat("MJ: $msg")
+                  if (quietNow) {
+                      finish(msg, "")
+                      quietNow = false
+                      return false
+                  }
+                  val tail = if (convo) " और कोई काम?" else ""
+                  finish(msg, if (say.isBlank()) "" else say + tail)
+                  return true
+              }
+
+              private fun addChat(line: String) {
+                  synchronized(chat) {
+                      chat.add(line)
+                      while (chat.size > 12) chat.removeAt(0)
+                  }
+              }
+
+              // ------------------------------------------------------------------ one task
+
+              private fun runTask(
+                  task: String,
+                  request: String,
+                  key: String,
+                  model: String,
+                  before: List<String>,
+                  after: List<String>
+              ): TaskResult {
+                  val quick = fastTorch(task, false)
+                  if (quick != null) return quick
+
+                  // simple tasks need no AI at all
+                  val lt = Local.parseTask(task)
+                  if (lt != null) {
+                      val r = execute(lt.action, lt.args, EMPTY, request)
+                      settle(lt.action)
+                      return if (failed(r)) TaskResult(false, r, "") else TaskResult(true, lt.msg, lt.speak)
+                  }
+
+                  taskTaps.clear()
+                  val history = ArrayList<String>()
+                  val recent = ArrayList<String>()
+                  var lastSig = ""
+                  var lastResult = ""
+                  var prevHash = 0
+                  var prevUi = false
+                  var forced = false
+                  val stuckMsg = "Atak gayi: '$task' mein wahi action baar baar aa raha tha, ruk gayi"
+                  val stuckSpeak = "मैं इस काम में अटक गई, इसलिए रुक गई।"
+
+                  for (step in 1..18) {
+                      if (cancelled) return TaskResult(false, "Roka gaya (stopped)", "")
+                      var root = rootInActiveWindow
+                      if (root == null) {
+                          Thread.sleep(400)
+                          root = rootInActiveWindow
+                      }
+                      val snap = ScreenReader.read(root)
+
+                      if (prevUi && history.isNotEmpty() && snap.hash == prevHash) {
+                          history[history.size - 1] = history.last() + " (screen did not change)"
+                      }
+
+                      setStatus("$task (step $step, AI soch rahi hai)")
+                      val t0 = System.currentTimeMillis()
+                      val reply = try {
+                          Brain.decide(key, model, task, before, after, history, snap)
+                      } catch (e: Exception) {
+                          return TaskResult(false, "AI error: ${e.message}", "")
+                      }
+                      val dt = System.currentTimeMillis() - t0
+                      if (dt > 6000) emit("Net slow hai: AI ne ${dt / 1000} second liye")
+                      val action = reply.optString("action")
+                      val args = Brain.args(reply)
+
+                      if (action == "done") {
+                          val m = args.optString("message", "").ifBlank { args.optString("text", "") }.ifBlank { "Ho gaya" }
+                          val s = args.optString("speak", "").ifBlank { m }
+                          var okDone = args.optBoolean("ok", true)
+                          if (okDone) {
+                              val lt = task.lowercase()
+                              val sc = snap.text.lowercase()
+                              val wantsPlay = Regex("play|चला|chala|sun|सुन|song|गाना|gana|video|वीडियो").containsMatchIn(lt)
+                              val proof = Regex("pause|seek|minimi|fullscreen|full screen|next|previous|autoplay|like|subscribe|progress").containsMatchIn(sc)
+                              val last = history.lastOrNull() ?: ""
+                              if (wantsPlay && snap.pkg.contains("youtube") && !proof) okDone = false
+                              else if (last.startsWith("tap") && last.contains("screen did not change")) okDone = false
+                          }
+                          if (!okDone && args.optBoolean("ok", true)) {
+                              return TaskResult(false, "Pakka nahi ke '$task' hua ya nahi: screen par saboot nahi dikha, aap ek nazar dekh lein", "मुझे पक्का नहीं कि काम हुआ या नहीं, आप एक नज़र देख लीजिए।")
+                          }
+                          return TaskResult(okDone, m, s)
+                      }
+
+                      // the same action again and again, whatever the screen looks like
+                      val same = action + args.toString()
+                      val limit = if (action == "scroll" || action == "wait") 5 else 3
+                      if (recent.takeLast(10).count { it == same } >= limit) {
+                          return TaskResult(false, stuckMsg, stuckSpeak)
+                      }
+                      recent.add(same)
+
+                      // the same action on a screen that did not change
+                      val sig = same + snap.hash
+                      if (sig == lastSig) {
+                          if (action in DIRECT && !failed(lastResult)) {
+                              return TaskResult(true, "Ho gaya ($lastResult)", "हो गया।")
+                          }
+                          if (action == "tap" && !forced) {
+                              forced = true
+                              val r = tapGesture(args.optInt("id", -1), snap)
+                              history.add("$action $args -> first click did nothing, used a real touch: $r")
+                              emit("Step $step: real touch tap $args")
+                              prevUi = true
+                              prevHash = snap.hash
+                              settle("tap")
+                              continue
+                          }
+                          return TaskResult(false, stuckMsg, stuckSpeak)
+                      }
+                      forced = false
+                      lastSig = sig
+
+                      if (action in ONCE && history.any { it.startsWith(action) && !failed(it) }) {
+                          history.add("$action $args -> BLOCKED: already done once in this task, look at the screen and call done")
+                          continue
+                      }
+                      if (action == "open_app" && history.any { it.startsWith("open_app") }) {
+                          history.add("open_app $args -> BLOCKED: app already opened in this task, work on the current screen")
+                          continue
+                      }
+                      if (action == "watch") {
+                          val what = args.optString("text", "the work to finish").ifBlank { "the work to finish" }
+                          val maxS = args.optInt("seconds", 120).coerceIn(10, 600)
+                          emit("Step $step: watch '$what' (max $maxS s)")
+                          val end = System.currentTimeMillis() + maxS * 1000L
+                          var seen = false
+                          while (System.currentTimeMillis() < end && !cancelled) {
+                              var w = 0
+                              while (w < 12 && !cancelled) {
+                                  Thread.sleep(500)
+                                  w++
+                              }
+                              if (cancelled) break
+                              val left = ((end - System.currentTimeMillis()) / 1000).toInt()
+                              setStatus("Intezaar: $what ($left s baqi)")
+                              val s2 = ScreenReader.read(rootInActiveWindow)
+                              val ok = try {
+                                  Brain.check(key, model, what, s2)
+                              } catch (e: Exception) {
+                                  false
+                              }
+                              if (ok) {
+                                  seen = true
+                                  break
+                              }
+                          }
+                          history.add("watch '$what' -> " + if (seen) "finished, look at the screen now" else "timed out, not finished")
+                          prevUi = false
+                          prevHash = 0
+                          lastSig = ""
+                          continue
+                      }
+                      emit("Step $step: $action $args")
+                      setStatus("$task (step $step)")
+
+                      val result = execute(action, args, snap, request)
+                      lastResult = result
+                      history.add("$action $args -> $result")
+                      prevUi = action == "tap" || action == "type" || action == "scroll" || action == "enter"
+                      prevHash = snap.hash
+                      settle(action)
+                  }
+                  return TaskResult(false, "'$task' poora nahi ho saka (18 step ho gaye)", "यह काम पूरा नहीं हो पाया।")
+              }
+
+              private fun failed(r: String): Boolean {
+                  val s = r.lowercase()
+                  return s.contains("not found") || s.contains("error") || s.contains("failed") ||
+                      s.contains("nahi") || s.contains("blocked") || s.contains("cannot") || s.startsWith("bad ")
+              }
+
+              /** Asks (by voice) before irreversible work. Only a clear yes continues. */
+              private fun confirmRisky(key: String, model: String): Boolean {
+                  setBubble(Mode.LISTEN)
+                  finish(
+                      "Yeh kaam wapas nahi ho sakta. Pakka? 'Haan' boliye",
+                      "यह काम वापस नहीं हो सकता। क्या आप पक्का चाहते हैं? हाँ बोलिए।"
+                  )
+                  if (cancelled) return false
+                  setStatus("Haan ya na boliye...")
+                  val rec = Recorder.record(8000L) { cancelled }
+                  var answer = false
+                  val w = rec.wav
+                  if (w != null) {
+                      answer = try {
+                          Brain.confirm(key, model, w, null)
+                      } catch (e: Exception) {
+                          false
+                      }
+                  } else if (rec.blocked) {
+                      val t = listenGoogle()
+                      if (!t.isNullOrBlank()) {
+                          answer = try {
+                              Brain.confirm(key, model, null, t)
+                          } catch (e: Exception) {
+                              false
+                          }
+                      }
+                  }
+                  setBubble(Mode.WORK)
+                  return answer
+              }
+
+              /** Several contacts or numbers match: show them on the screen only, then listen for the choice. */
+              private fun chooseContact(cands: List<Contact>): Contact? {
+                  val descs = cands.map { Device.describeFull(it) }
+                  emit("MJ: Kai number mile, kaun sa?")
+                  descs.forEachIndexed { i, d -> emit("${i + 1}) $d") }
+                  val shown = descs.mapIndexed { i, d -> "${i + 1}) $d" }.joinToString("\n")
+                  val spoken = "कई नंबर मिले। स्क्रीन देखिए, कौन सा?"
+                  for (attempt in 1..2) {
+                      setBubble(Mode.LISTEN)
+                      setStatus("Kaun sa? (pehla / doosra / teesra...)\n$shown")
+                      if (voiceOn()) speak(spoken, true)
+                      if (cancelled) return null
+                      val rec = Recorder.record(9000L) { cancelled }
+                      var idx = 0
+                      val w = rec.wav
+                      if (w != null) {
+                          idx = try {
+                              Brain.choose(aiKey, aiModel, w, null, descs)
+                          } catch (e: Exception) {
+                              0
+                          }
+                      } else if (rec.blocked) {
+                          val t = listenGoogle()
+                          if (!t.isNullOrBlank()) {
+                              idx = try {
+                                  Brain.choose(aiKey, aiModel, null, t, descs)
+                              } catch (e: Exception) {
+                                  0
+                              }
+                          }
+                      }
+                      setBubble(Mode.WORK)
+                      if (idx in 1..cands.size) return cands[idx - 1]
+                      if (cancelled) return null
+                  }
+                  return null
+              }
+
+              /** Call, WhatsApp chat or SMS to a person from the contacts. */
+              private fun contactAction(a: JSONObject, kind: String): String {
+                  val name = a.optString("name").trim()
+                  var number = a.optString("number").trim()
+                  val text = a.optString("text")
+                  var shown = name
+                  if (number.isEmpty()) {
+                      if (name.isEmpty()) return "contact ka naam nahi diya"
+                      val all = Device.findContacts(this, name)
+                          ?: return "contacts permission nahi hai: MJ app mein '6) Contacts/Call/SMS permission' dabayein"
+                      val cands = Device.pickCandidates(all, name)
+                      if (cands.isEmpty()) return "contact '$name' not found in phone contacts"
+                      val pick = if (cands.size == 1) cands[0] else chooseContact(cands)
+                      if (pick == null) return "number nahi chuna gaya, isliye kaam nahi kiya"
+                      number = pick.number
+                      shown = pick.name
+                  }
+                  return when (kind) {
+                      "call" -> Device.callNumber(this, number) + " [" + shown + "]"
+                      "wa" -> {
+                          val cc = getSharedPreferences("mj", MODE_PRIVATE).getString("cc", "92") ?: "92"
+                          val k = "wa|" + number.filter { it.isDigit() }.takeLast(9) + "|" + text
+                          if (text.isNotBlank() && smsSent.contains(k)) {
+                              "message already sent once to $shown, not sending it again"
+                          } else {
+                              val r = Device.whatsappChat(this, number, text, cc)
+                              if (text.isBlank() || r.contains("cannot") || r.contains("error")) {
+                                  r + " [" + shown + "]"
+                              } else {
+                                  smsSent.add(k)
+                                  r + " [" + shown + "] -> " + pressSendOnce()
+                              }
+                          }
+                      }
+                      "share" -> {
+                          val video = a.optString("kind").lowercase().contains("video")
+                          val k = "share|" + number.filter { it.isDigit() }.takeLast(9) + "|" + video
+                          if (smsSent.contains(k)) {
+                              "already sent to $shown, not sending again"
+                          } else {
+                              val uri = Device.latestMedia(this, video)
+                              if (uri == null) {
+                                  "latest " + (if (video) "video" else "photo") + " nahi mili: gallery permission ke liye MJ app mein '6)' dabayein"
+                              } else {
+                                  val cc = getSharedPreferences("mj", MODE_PRIVATE).getString("cc", "92") ?: "92"
+                                  val r = Device.shareToWhatsApp(this, uri, video, number, cc, text)
+                                  if (r.startsWith("cannot")) {
+                                      r
+                                  } else {
+                                      smsSent.add(k)
+                                      r + " [" + shown + "] -> " + pressSendOnce()
+                                  }
+                              }
+                          }
+                      }
+                      else -> {
+                          val k = number.filter { it.isDigit() }.takeLast(9) + "|" + text
+                          if (!smsSent.add(k)) {
+                              "sms already sent once to $shown, not sending it again"
+                          } else {
+                              Device.sendSms(this, number, text) + " [" + shown + "]"
+                          }
+                      }
+                  }
+              }
+
+              private fun findSend(n: AccessibilityNodeInfo?, depth: Int): AccessibilityNodeInfo? {
+                  if (n == null || depth > 40) return null
+                  val l = (n.contentDescription?.toString() ?: n.text?.toString() ?: "").lowercase().trim()
+                  if (l == "send" || l == "भेजें" || l == "بھیجیں") return n
+                  for (i in 0 until n.childCount) {
+                      val r = findSend(n.getChild(i), depth + 1)
+                      if (r != null) return r
+                  }
+                  return null
+              }
+
+              /** Presses WhatsApp's Send button exactly once. */
+              private fun pressSendOnce(): String {
+                  Thread.sleep(1200)
+                  waitStable(3500)
+                  for (attempt in 1..3) {
+                      val n = findSend(rootInActiveWindow, 0)
+                      if (n != null) {
+                          var t: AccessibilityNodeInfo? = n
+                          while (t != null && !t.isClickable) t = t.parent
+                          if (t != null && t.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                              Thread.sleep(500)
+                              return "Send pressed once"
+                          }
+                          val r = Rect()
+                          n.getBoundsInScreen(r)
+                          if (gestureTap(r.centerX().toFloat(), r.centerY().toFloat())) {
+                              Thread.sleep(500)
+                              return "Send pressed once"
+                          }
+                      }
+                      Thread.sleep(900)
+                  }
+                  return "Send button nahi mila, screen dekh kar check karein (dobara send na karein)"
+              }
+
+              private fun holdAt(x: Float, y: Float, ms: Long): Boolean {
+                  val p = Path()
+                  p.moveTo(x, y)
+                  val g = GestureDescription.Builder()
+                      .addStroke(GestureDescription.StrokeDescription(p, 0, ms.coerceIn(100L, 55000L)))
+                      .build()
+                  val latch = CountDownLatch(1)
+                  var ok = false
+                  dispatchGesture(g, object : AccessibilityService.GestureResultCallback() {
+                      override fun onCompleted(gestureDescription: GestureDescription?) {
+                          ok = true
+                          latch.countDown()
+                      }
+
+                      override fun onCancelled(gestureDescription: GestureDescription?) {
+                          latch.countDown()
+                      }
+                  }, null)
+                  latch.await(ms.coerceIn(100L, 55000L) + 3000L, TimeUnit.MILLISECONDS)
+                  return ok
+              }
+
+              /** Screenshot (Android 11+) answered by the vision model. */
+              private fun look(question: String): String {
+                  if (Build.VERSION.SDK_INT < 30) return "look not supported on this Android version"
+                  val latch = CountDownLatch(1)
+                  var bmp: Bitmap? = null
+                  try {
+                      takeScreenshot(
+                          android.view.Display.DEFAULT_DISPLAY,
+                          mainExecutor,
+                          object : AccessibilityService.TakeScreenshotCallback {
+                              override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
+                                  try {
+                                      val hw = Bitmap.wrapHardwareBuffer(result.hardwareBuffer, result.colorSpace)
+                                      bmp = hw?.copy(Bitmap.Config.ARGB_8888, false)
+                                      hw?.recycle()
+                                      result.hardwareBuffer.close()
+                                  } catch (e: Exception) {
+                                  }
+                                  latch.countDown()
+                              }
+
+                              override fun onFailure(errorCode: Int) {
+                                  latch.countDown()
+                              }
+                          }
+                      )
+                  } catch (e: Exception) {
+                      return "look failed: ${e.message}"
+                  }
+                  latch.await(4, TimeUnit.SECONDS)
+                  val b = bmp ?: return "look failed: screenshot nahi mila (Accessibility dobara off/on karein)"
+                  val w = 720
+                  val h = (b.height * (w.toFloat() / b.width)).toInt().coerceAtLeast(1)
+                  val small = Bitmap.createScaledBitmap(b, w, h, true)
+                  val out = java.io.ByteArrayOutputStream()
+                  small.compress(Bitmap.CompressFormat.JPEG, 70, out)
+                  val ans = try {
+                      Brain.look(aiKey, aiModel, question, out.toByteArray())
+                  } catch (e: Exception) {
+                      return "look failed: ${e.message}"
+                  }
+                  return if (ans.isBlank()) "look failed: koi jawab nahi aaya" else "SCREEN ANSWER: $ans"
+              }
+
+              private fun longPress(id: Int, snap: ScreenSnapshot): String {
+                  val n = snap.nodes.getOrNull(id) ?: return "bad element id $id"
+                  var t: AccessibilityNodeInfo? = n
+                  while (t != null && !t.isLongClickable) t = t.parent
+                  if (t != null && t.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)) return "long pressed"
+                  val r = Rect()
+                  n.getBoundsInScreen(r)
+                  return if (holdAt(r.centerX().toFloat(), r.centerY().toFloat(), 800)) "long pressed by gesture" else "long press failed"
+              }
+
+              /** Press and hold (for example the WhatsApp microphone while the user records a voice note). */
+              private fun holdPress(id: Int, seconds: Int, snap: ScreenSnapshot): String {
+                  val n = snap.nodes.getOrNull(id) ?: return "bad element id $id"
+                  val secs = seconds.coerceIn(1, 55)
+                  val r = Rect()
+                  n.getBoundsInScreen(r)
+                  tts?.stop()
+                  val counter = Thread {
+                      try {
+                          for (left in secs downTo 1) {
+                              setStatus("Ab bolein... $left")
+                              Thread.sleep(1000)
+                          }
+                      } catch (e: InterruptedException) {
+                      }
+                  }
+                  counter.start()
+                  val ok = holdAt(r.centerX().toFloat(), r.centerY().toFloat(), secs * 1000L)
+                  counter.interrupt()
+                  return if (ok) "held for $secs seconds and released (a voice note is sent when released)" else "hold failed"
+              }
+
+              /** Waits until the screen stops changing, so the next decision sees the real new screen. */
+              private fun settle(action: String) {
+                  when (action) {
+                      "wait" -> return
+                      "open_app", "youtube_search", "web_search", "call", "maps", "open_settings",
+                      "call_contact", "whatsapp_chat", "share_latest" -> {
+                          Thread.sleep(900)
+                          waitStable(4000)
+                      }
+                      "flashlight", "volume", "brightness", "say", "lock_screen", "screenshot", "send_sms", "alarm", "timer", "look" ->
+                          Thread.sleep(150)
+                      else -> {
+                          Thread.sleep(250)
+                          waitStable(2200)
+                      }
+                  }
+              }
+
+              private fun waitStable(maxMs: Long) {
+                  val end = System.currentTimeMillis() + maxMs
+                  var last = 0
+                  var same = 0
+                  while (System.currentTimeMillis() < end && !cancelled) {
+                      Thread.sleep(250)
+                      val h = ScreenReader.read(rootInActiveWindow).hash
+                      if (h == last) {
+                          same++
+                          if (same >= 2) return
+                      } else {
+                          same = 0
+                          last = h
+                      }
+                  }
+              }
+
+              /** Simple torch commands skip the AI completely: instant and cannot go wrong. */
+              private fun fastTorch(text: String, checkJoined: Boolean): TaskResult? {
+                  val c = normalize(text.lowercase())
+                  if (c.split(Regex("\\s+")).size > 9) return null
+                  if (checkJoined &&
+                      Regex("\\baur\\b|\\band\\b|\\bphir\\b|\\bthen\\b|\\bfir\\b|\\bor\\b|और|اور|फिर|پھر|,").containsMatchIn(c)
+                  ) {
+                      return null
+                  }
+                  val torchWords = listOf(
+                      "flashlight", "flash light", "torch", "tourch",
+                      "ٹارچ", "فلیش", "फ्लैश", "फ़्लैश", "टॉर्च", "टार्च", "टोर्च", "तोर्च"
+                  )
+                  if (torchWords.none { c.contains(it) }) return null
+
+                  val offRe = Regex("\\boff\\b|band|bujha|بند|آف|بجھا|बंद|बुझा|ऑफ")
+                  val onRe = Regex("\\bon\\b|chalu|jalao|jala|kholo|اون|آن|چالو|جلا|चालू|जला|ऑन")
+                  val secs = Regex("(\\d+)\\s*(sec|second|سیکنڈ|सेकंड|सेकण्ड)")
+                      .find(c)?.groupValues?.get(1)?.toIntOrNull()
+                  val wantOn = onRe.containsMatchIn(c)
+                  val wantOff = offRe.containsMatchIn(c)
+
+                  val result = when {
+                      secs != null && wantOn -> Device.flashlight(this, true, secs)
+                      wantOff && !wantOn -> Device.flashlight(this, false)
+                      wantOn && !wantOff -> Device.flashlight(this, true)
+                      else -> return null
+                  }
+                  val bad = result.contains("error") || result.contains("not found")
+                  val spoken = when {
+                      bad -> ""
+                      secs != null -> "हो गया।"
+                      wantOff -> "टॉर्च बंद हो गई।"
+                      else -> "टॉर्च चालू हो गई।"
+                  }
+                  return TaskResult(!bad, result, spoken)
+              }
+
+              private fun normalize(s: String): String {
+                  val sb = StringBuilder()
+                  for (ch in s) {
+                      sb.append(
+                          when (ch) {
+                              in '٠'..'٩' -> '0' + (ch - '٠')
+                              in '۰'..'۹' -> '0' + (ch - '۰')
+                              else -> ch
+                          }
+                      )
+                  }
+                  return sb.toString()
+              }
+
+              // ------------------------------------------------------------------ actions
+
+              private fun execute(action: String, a: JSONObject, snap: ScreenSnapshot, request: String): String {
+                  return when (action) {
+                      "flashlight" -> Device.flashlight(this, a.optBoolean("on", true), a.optInt("seconds", 0))
+                      "open_app" -> Device.openApp(this, a.optString("name"))
+                      "youtube_search" -> Device.youtubeSearch(this, a.optString("query"))
+                      "web_search" -> Device.webSearch(this, a.optString("query"))
+                      "call" -> Device.dial(this, a.optString("number"))
+                      "call_contact" -> contactAction(a, "call")
+                      "whatsapp_chat" -> contactAction(a, "wa")
+                      "send_sms" -> contactAction(a, "sms")
+                      "share_latest" -> contactAction(a, "share")
+                      "alarm" -> Device.setAlarm(this, a.optInt("hour", -1), a.optInt("minute", 0), a.optString("text"))
+                      "timer" -> Device.setTimer(this, a.optInt("seconds", 0), a.optString("text"))
+                      "look" -> look(a.optString("text"))
+                      "long_press" -> longPress(a.optInt("id", -1), snap)
+                      "hold" -> holdPress(a.optInt("id", -1), a.optInt("seconds", 10), snap)
+                      "volume" -> Device.volume(this, a.optString("direction"), a.optInt("level", -1))
+                      "brightness" -> Device.brightness(this, a.optInt("level", 100))
+                      "maps" -> Device.maps(this, a.optString("query"), a.optBoolean("route", true))
+                      "open_settings" -> Device.openSettings(this, a.optString("page"))
+                      "lock_screen" -> global(GLOBAL_ACTION_LOCK_SCREEN, "screen locked")
+                      "screenshot" -> global(GLOBAL_ACTION_TAKE_SCREENSHOT, "screenshot taken")
+                      "quick_settings" -> global(GLOBAL_ACTION_QUICK_SETTINGS, "quick settings opened")
+                      "tap" -> tap(a.optInt("id", -1), snap, request)
+                      "type" -> typeText(a.optInt("id", -1), a.optString("text"), snap)
+                      "enter" -> pressEnter(a.optInt("id", -1), snap)
+                      "scroll" -> scroll(a.optString("direction", "down"), a.optInt("id", -1), snap)
+                      "back" -> global(GLOBAL_ACTION_BACK, "back")
+                      "home" -> global(GLOBAL_ACTION_HOME, "home")
+                      "recents" -> global(GLOBAL_ACTION_RECENTS, "recents")
+                      "notifications" -> global(GLOBAL_ACTION_NOTIFICATIONS, "notifications")
+                      "wait" -> {
+                          Thread.sleep(a.optLong("ms", 1000).coerceIn(0L, 5000L))
+                          "waited"
+                      }
+                      "say" -> {
+                          speak(a.optString("text"), true)
+                          "spoken"
+                      }
+                      else -> "unknown action '$action'"
+                  }
+              }
+
+              private fun global(code: Int, name: String): String =
+                  if (performGlobalAction(code)) name else "$name failed"
+
+              private fun tap(id: Int, snap: ScreenSnapshot, request: String): String {
+                  val n = snap.nodes.getOrNull(id) ?: return "bad element id $id (use a number from the screen list)"
+                  val label = (n.text ?: n.contentDescription ?: "").toString().lowercase().trim()
+                  val asked = request.lowercase()
+                  if (SENSITIVE.any { label.contains(it) && !asked.contains(it) }) {
+                      return "BLOCKED: '$label' looks sensitive and the user did not ask for it"
+                  }
+                  val oneTime = label.isNotEmpty() && TOGGLERS.containsMatchIn(label)
+                  if (oneTime && taskTaps.contains(label)) {
+                      return "BLOCKED: '$label' was already pressed once in this task; do not press it again, check the screen and call done"
+                  }
+                  var t: AccessibilityNodeInfo? = n
+                  while (t != null && !t.isClickable) t = t.parent
+                  val done = if (t != null && t.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                      "tapped"
+                  } else {
+                      val r = Rect()
+                      n.getBoundsInScreen(r)
+                      if (gestureTap(r.centerX().toFloat(), r.centerY().toFloat())) "tapped by gesture" else "tap failed"
+                  }
+                  if (oneTime && !done.contains("failed")) {
+                      taskTaps.add(label)
+                      return "$done ('$label' is a one-time button: do not press it again)"
+                  }
+                  return done
+              }
+
+              private fun gestureTap(x: Float, y: Float): Boolean {
+                  val p = Path()
+                  p.moveTo(x, y)
+                  val g = GestureDescription.Builder()
+                      .addStroke(GestureDescription.StrokeDescription(p, 0, 60))
+                      .build()
+                  val latch = CountDownLatch(1)
+                  var ok = false
+                  dispatchGesture(g, object : AccessibilityService.GestureResultCallback() {
+                      override fun onCompleted(gestureDescription: GestureDescription?) {
+                          ok = true
+                          latch.countDown()
+                      }
+
+                      override fun onCancelled(gestureDescription: GestureDescription?) {
+                          latch.countDown()
+                      }
+                  }, null)
+                  latch.await(2, TimeUnit.SECONDS)
+                  return ok
+              }
+
+              /** A real touch on the middle of the element, used when a normal click did nothing. */
+              private fun tapGesture(id: Int, snap: ScreenSnapshot): String {
+                  val n = snap.nodes.getOrNull(id) ?: return "bad element id $id"
+                  val r = Rect()
+                  n.getBoundsInScreen(r)
+                  return if (gestureTap(r.centerX().toFloat(), r.centerY().toFloat())) "touched" else "touch failed"
+              }
+
+              private fun typeText(id: Int, text: String, snap: ScreenSnapshot): String {
+                  val n = snap.nodes.getOrNull(id) ?: return "bad element id $id (use a number from the screen list)"
+                  n.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                  val b = Bundle()
+                  b.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                  if (!n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b)) return "type failed"
+                  n.refresh()
+                  return "typed; the field now shows: '" + (n.text?.toString()?.take(60) ?: "") + "'"
+              }
+
+              private fun pressEnter(id: Int, snap: ScreenSnapshot): String {
+                  if (Build.VERSION.SDK_INT < 30) {
+                      return "enter not supported on this Android version, tap the search button instead"
+                  }
+                  val n = snap.nodes.getOrNull(id) ?: findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                      ?: return "no input field to press enter in"
+                  return if (n.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)) {
+                      "enter pressed"
+                  } else {
+                      "enter failed"
+                  }
+              }
+
+              private fun scroll(direction: String, id: Int, snap: ScreenSnapshot): String {
+                  val n = snap.nodes.getOrNull(id) ?: snap.nodes.firstOrNull { it.isScrollable }
+                      ?: return "nothing scrollable on screen"
+                  val act = if (direction == "up") {
+                      AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+                  } else {
+                      AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                  }
+                  return if (n.performAction(act)) "scrolled $direction" else "scroll failed (end of list?)"
+              }
+
+              // ------------------------------------------------------------------ feedback
+
+              /** msg goes on screen; spoken (if not empty and voice reply is on) goes to the Hindi voice. */
+              private fun finish(msg: String, spoken: String = "") {
+                  emit("MJ: $msg")
+                  setStatus(msg)
+                  if (spoken.isNotBlank() && voiceOn()) speak(spoken, true) else Thread.sleep(1000)
+              }
+
+              private fun emit(s: String) {
+                  synchronized(logs) {
+                      logs.add(s)
+                      if (logs.size > 200) logs.removeAt(0)
+                  }
+                  sink?.invoke(s)
+              }
+
+              private fun voiceOn(): Boolean = getSharedPreferences("mj", MODE_PRIVATE).getBoolean("voice", true)
+
+              private fun speak(t: String, wait: Boolean) {
+                  if (t.isBlank() || !voiceOn() || quietNow) return
+                  val engine = tts ?: return
+                  val latch = CountDownLatch(1)
+                  speakCounter++
+                  val id = "mj$speakCounter"
+                  speakId = id
+                  speakLatch = latch
+                  if (engine.speak(t, TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) return
+                  if (wait) {
+                      try {
+                          latch.await(25, TimeUnit.SECONDS)
+                      } catch (e: InterruptedException) {
+                      }
+                      Thread.sleep(300)
+                  }
+              }
+
+              private fun setStatus(t: String) {
+                  ui.post { statusView?.text = t }
+              }
+
+              private fun setBubble(mode: Mode) {
+                  val color = when (mode) {
+                      Mode.IDLE -> 0xFF1E88E5.toInt()
+                      Mode.LISTEN -> 0xFFE53935.toInt()
+                      Mode.WORK -> 0xFFFB8C00.toInt()
+                  }
+                  ui.post { bubbleBg?.setColor(color) }
+              }
+
+              private fun showBubble() {
+                  ui.post {
+                      if (bubble != null) return@post
+                      val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+                      val dm = resources.displayMetrics
+                      val size = (56 * dm.density).toInt()
+
+                      val bg = GradientDrawable()
+                      bg.shape = GradientDrawable.OVAL
+                      bg.setColor(0xFF1E88E5.toInt())
+
+                      val v = TextView(this)
+                      v.text = "🎤"
+                      v.textSize = 22f
+                      v.gravity = Gravity.CENTER
+                      v.background = bg
+
+                      val lp = WindowManager.LayoutParams(
+                          size, size,
+                          WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                          PixelFormat.TRANSLUCENT
+                      )
+                      lp.gravity = Gravity.TOP or Gravity.START
+                      lp.x = max(0, dm.widthPixels - size - (14 * dm.density).toInt())
+                      lp.y = dm.heightPixels / 2
+
+                      var sx = 0f
+                      var sy = 0f
+                      var ox = 0
+                      var oy = 0
+                      var moved = false
+                      v.setOnTouchListener { _, e ->
+                          when (e.action) {
+                              MotionEvent.ACTION_DOWN -> {
+                                  sx = e.rawX
+                                  sy = e.rawY
+                                  ox = lp.x
+                                  oy = lp.y
+                                  moved = false
+                                  true
+                              }
+                              MotionEvent.ACTION_MOVE -> {
+                                  val dx = (e.rawX - sx).toInt()
+                                  val dy = (e.rawY - sy).toInt()
+                                  if (abs(dx) > 10 || abs(dy) > 10) moved = true
+                                  if (moved) {
+                                      lp.x = (ox + dx).coerceIn(0, max(0, dm.widthPixels - size))
+                                      lp.y = (oy + dy).coerceIn(0, max(0, dm.heightPixels - size))
+                                      try {
+                                          wm.updateViewLayout(v, lp)
+                                      } catch (ex: Exception) {
+                                      }
+                                  }
+                                  true
+                              }
+                              MotionEvent.ACTION_UP -> {
+                                  if (!moved) startConversation()
+                                  true
+                              }
+                              else -> false
+                          }
+                      }
+
+                      try {
+                          wm.addView(v, lp)
+                          bubble = v
+                          bubbleBg = bg
+                      } catch (e: Exception) {
+                          emit("bubble error: ${e.message}")
+                      }
+                  }
+              }
+
+              private fun hideBubble() {
+                  ui.post {
+                      val b = bubble
+                      if (b != null) {
+                          try {
+                              (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(b)
+                          } catch (e: Exception) {
+                          }
+                      }
+                      bubble = null
+                      bubbleBg = null
+                  }
+              }
+
+              private fun showOverlay() {
+                  ui.post {
+                      if (overlay != null) return@post
+                      val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+                      val row = LinearLayout(this)
+                      row.orientation = LinearLayout.HORIZONTAL
+                      row.gravity = Gravity.CENTER_VERTICAL
+                      row.setBackgroundColor(0xE6101820.toInt())
+                      row.setPadding(24, 16, 24, 16)
+
+                      val tv = TextView(this)
+                      tv.setTextColor(Color.WHITE)
+                      tv.textSize = 13f
+
+                      val stop = Button(this)
+                      stop.text = "STOP"
+                      stop.setOnClickListener { stopAll() }
+
+                      row.addView(tv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                      row.addView(
+                          stop,
+                          LinearLayout.LayoutParams(
+                              ViewGroup.LayoutParams.WRAP_CONTENT,
+                              ViewGroup.LayoutParams.WRAP_CONTENT
+                          )
+                      )
+
+                      val lp = WindowManager.LayoutParams(
+                          ViewGroup.LayoutParams.MATCH_PARENT,
+                          ViewGroup.LayoutParams.WRAP_CONTENT,
+                          WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                          PixelFormat.TRANSLUCENT
+                      )
+                      lp.gravity = Gravity.BOTTOM
+                      try {
+                          wm.addView(row, lp)
+                          overlay = row
+                          statusView = tv
+                      } catch (e: Exception) {
+                          emit("overlay error: ${e.message}")
+                      }
+                  }
+              }
+
+              private fun hideOverlay() {
+                  ui.post {
+                      val o = overlay
+                      if (o != null) {
+                          try {
+                              (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(o)
+                          } catch (e: Exception) {
+                          }
+                      }
+                      overlay = null
+                      statusView = null
+                  }
+              }
+          }
+          MJEOF
+          mkdir -p app/src/main/java/com/waqas/mj
+          cat > app/src/main/java/com/waqas/mj/MainActivity.kt <<'MJEOF'
+          package com.waqas.mj
+
+          import android.Manifest
+          import android.app.Activity
+          import android.content.Intent
+          import android.content.pm.PackageManager
+          import android.net.Uri
+          import android.os.Build
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.text.InputType
+          import android.widget.Button
+          import android.widget.CheckBox
+          import android.widget.EditText
+          import android.widget.LinearLayout
+          import android.widget.ScrollView
+          import android.widget.TextView
+          import android.widget.Toast
+
+          class MainActivity : Activity() {
+
+              private lateinit var status: TextView
+              private lateinit var logView: TextView
+              private lateinit var cmdBox: EditText
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  val prefs = getSharedPreferences("mj", MODE_PRIVATE)
+                  val pad = (16 * resources.displayMetrics.density).toInt()
+
+                  val col = LinearLayout(this)
+                  col.orientation = LinearLayout.VERTICAL
+                  col.setPadding(pad, pad * 2, pad, pad)
+
+                  fun label(t: String, size: Float = 14f): TextView {
+                      val v = TextView(this)
+                      v.text = t
+                      v.textSize = size
+                      col.addView(v)
+                      return v
+                  }
+
+                  fun button(t: String, onClick: () -> Unit): Button {
+                      val b = Button(this)
+                      b.text = t
+                      b.setOnClickListener { onClick() }
+                      col.addView(b)
+                      return b
+                  }
+
+                  label("MJ Assistant", 26f)
+                  status = label("")
+
+                  button("1) Accessibility ON karein") {
+                      startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                  }
+                  button("2) Display over other apps allow karein") {
+                      startActivity(
+                          Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                      )
+                  }
+                  button("4) Mic permission allow karein") { askMic() }
+                  button("5) Brightness permission allow karein") {
+                      startActivity(
+                          Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:$packageName"))
+                      )
+                  }
+                  button("6) Contacts / Call / SMS / Gallery permission allow karein") {
+                      val list = ArrayList<String>()
+                      list.add(Manifest.permission.READ_CONTACTS)
+                      list.add(Manifest.permission.CALL_PHONE)
+                      list.add(Manifest.permission.SEND_SMS)
+                      if (Build.VERSION.SDK_INT >= 33) {
+                          list.add(Manifest.permission.READ_MEDIA_IMAGES)
+                          list.add(Manifest.permission.READ_MEDIA_VIDEO)
+                      } else {
+                          list.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+                      }
+                      requestPermissions(list.toTypedArray(), 3)
+                  }
+                  button("7) Vosk Hindi model (zip file) chunein") {
+                      val i = Intent(Intent.ACTION_OPEN_DOCUMENT)
+                      i.addCategory(Intent.CATEGORY_OPENABLE)
+                      i.type = "*/*"
+                      startActivityForResult(i, 7)
+                  }
+                  button("Vosk test (6 second bolein, dekhein kya likha)") {
+                      Thread {
+                          VoskHelper.test(this, 6) { line -> runOnUiThread { logView.append(line + "\n") } }
+                      }.start()
+                  }
+
+                  button("Mic test (4 second bolein, phir apni awaaz sunein)") {
+                      Thread {
+                          val add = { s: String -> runOnUiThread { logView.append(s + "\n") } }
+                          if (MicState.wakeHolding) {
+                              add("Pehle Wake word OFF karke Save karein, phir mic test karein")
+                          } else {
+                              add("Mic test: ab bolein...")
+                              val rec = Recorder.record(5000L) { false }
+                              val w = rec.wav
+                              if (rec.blocked) {
+                                  add("Mic block hai: Android sirf khamoshi de raha hai")
+                              } else if (w == null) {
+                                  add("Koi awaaz nahi pakri")
+                              } else {
+                                  add("Record hui: " + Recorder.lastInfo + ". Ab sunein...")
+                                  Recorder.playWav(w)
+                                  add("Test khatam")
+                              }
+                          }
+                      }.start()
+                  }
+
+                  label("Gemini API key")
+                  val keyBox = EditText(this)
+                  keyBox.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+                  keyBox.setText(prefs.getString("key", ""))
+                  col.addView(keyBox)
+
+                  label("Aap ka naam")
+                  val nameBox = EditText(this)
+                  nameBox.setText(prefs.getString("name", "Waqas"))
+                  col.addView(nameBox)
+
+                  label("Model (default: ${Brain.DEFAULT_MODEL})")
+                  val modelBox = EditText(this)
+                  modelBox.setText(prefs.getString("model", Brain.DEFAULT_MODEL))
+                  col.addView(modelBox)
+
+                  label("Kaam wala model (khali chhorein to upar wala hi chalega)")
+                  val model2Box = EditText(this)
+                  model2Box.hint = "jaise: gemini-flash-latest"
+                  model2Box.setText(prefs.getString("model2", ""))
+                  col.addView(model2Box)
+
+                  label("Wake word (Hindi mein likhein, comma se alag). Vosk test se dekhein wo kaise likhta hai")
+                  val wakeBox = EditText(this)
+                  wakeBox.setText(prefs.getString("wakeWords", WakeService.DEFAULT_WORDS))
+                  col.addView(wakeBox)
+
+                  val wake = CheckBox(this)
+                  wake.text = "Wake word ON (hamesha sunna, notification rahegi)"
+                  wake.isChecked = prefs.getBoolean("wake", false)
+                  col.addView(wake)
+
+                  val offlineCmd = CheckBox(this)
+                  offlineCmd.text = "Offline awaaz commands (Vosk, sirf Hindi lafz, tajurba; band rakhna behtar)"
+                  offlineCmd.isChecked = prefs.getBoolean("offlineCmd", false)
+                  col.addView(offlineCmd)
+
+                  val voice = CheckBox(this)
+                  voice.text = "Awaz mein jawab (Hindi voice)"
+                  voice.isChecked = prefs.getBoolean("voice", true)
+                  col.addView(voice)
+
+                  val bubble = CheckBox(this)
+                  bubble.text = "Floating mic bubble (har screen par)"
+                  bubble.isChecked = prefs.getBoolean("bubble", true)
+                  col.addView(bubble)
+
+                  button("3) Save") {
+                      prefs.edit()
+                          .putString("key", keyBox.text.toString().trim())
+                          .putString("name", nameBox.text.toString().trim().ifEmpty { "Waqas" })
+                          .putString("model", modelBox.text.toString().trim().ifEmpty { Brain.DEFAULT_MODEL })
+                          .putString("model2", model2Box.text.toString().trim())
+                          .putString("wakeWords", wakeBox.text.toString().trim().ifEmpty { WakeService.DEFAULT_WORDS })
+                          .putBoolean("wake", wake.isChecked)
+                          .putBoolean("offlineCmd", offlineCmd.isChecked)
+                          .putBoolean("voice", voice.isChecked)
+                          .putBoolean("bubble", bubble.isChecked)
+                          .apply()
+                      MJService.instance?.refreshBubble()
+                      applyWake(wake.isChecked)
+                      Toast.makeText(this, "Save ho gaya", Toast.LENGTH_SHORT).show()
+                  }
+
+                  label("Command likhein ya bolein")
+                  cmdBox = EditText(this)
+                  cmdBox.hint = "jaise: VLC mein song chalao aur volume full karo"
+                  col.addView(cmdBox)
+
+                  button("Send") { send() }
+                  button("Mic (baat cheet shuru)") {
+                      val s = MJService.instance
+                      if (s == null) {
+                          Toast.makeText(this, "Pehle Accessibility ON karein", Toast.LENGTH_LONG).show()
+                      } else if (!micGranted()) {
+                          askMic()
+                      } else {
+                          s.startConversation()
+                          moveTaskToBack(true)
+                      }
+                  }
+
+                  logView = label("", 12f)
+
+                  val scroll = ScrollView(this)
+                  scroll.addView(col)
+                  setContentView(scroll)
+              }
+
+              private fun micGranted(): Boolean =
+                  checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+              private fun askMic() {
+                  val need = ArrayList<String>()
+                  if (!micGranted()) need.add(Manifest.permission.RECORD_AUDIO)
+                  if (Build.VERSION.SDK_INT >= 33 &&
+                      checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                  ) {
+                      need.add(Manifest.permission.POST_NOTIFICATIONS)
+                  }
+                  if (need.isEmpty()) {
+                      Toast.makeText(this, "Mic permission pehle se hai", Toast.LENGTH_SHORT).show()
+                  } else {
+                      requestPermissions(need.toTypedArray(), 2)
+                  }
+              }
+
+              private fun applyWake(on: Boolean) {
+                  val svc = Intent(this, WakeService::class.java)
+                  if (!on) {
+                      stopService(svc)
+                      return
+                  }
+                  if (!VoskHelper.hasModel(this)) {
+                      Toast.makeText(this, "Pehle 7) se Vosk model chunein", Toast.LENGTH_LONG).show()
+                      return
+                  }
+                  if (!micGranted()) {
+                      askMic()
+                      return
+                  }
+                  if (MJService.instance == null) {
+                      Toast.makeText(this, "Pehle Accessibility ON karein", Toast.LENGTH_LONG).show()
+                      return
+                  }
+                  try {
+                      startForegroundService(svc)
+                  } catch (e: Exception) {
+                      Toast.makeText(this, "Wake word shuru nahi hua: ${e.message}", Toast.LENGTH_LONG).show()
+                  }
+              }
+
+              private fun updateStatus() {
+                  val svc = if (MJService.instance != null) "ON" else "OFF"
+                  val ovl = if (Settings.canDrawOverlays(this)) "OK" else "NAHI"
+                  val mic = if (micGranted()) "OK" else "NAHI"
+                  val bri = if (Settings.System.canWrite(this)) "OK" else "NAHI"
+                  val con = if (checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) "OK" else "NAHI"
+                  val vosk = if (VoskHelper.hasModel(this)) "OK" else "NAHI"
+                  status.text = "Accessibility: $svc | Display over apps: $ovl | Mic: $mic | Brightness: $bri | Contacts: $con | Vosk: $vosk"
+              }
+
+              override fun onRequestPermissionsResult(
+                  requestCode: Int,
+                  permissions: Array<out String>,
+                  grantResults: IntArray
+              ) {
+                  super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+                  updateStatus()
+              }
+
+              @Deprecated("Deprecated in Java")
+              override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+                  super.onActivityResult(requestCode, resultCode, data)
+                  if (requestCode == 7 && resultCode == RESULT_OK) {
+                      val uri = data?.data ?: return
+                      logView.append("Vosk model copy shuru, thora intezaar karein...\n")
+                      Thread {
+                          val msg = VoskHelper.install(this, uri) { p -> runOnUiThread { status.text = p } }
+                          runOnUiThread {
+                              logView.append(msg + "\n")
+                              updateStatus()
+                          }
+                      }.start()
+                  }
+              }
+
+              override fun onResume() {
+                  super.onResume()
+                  updateStatus()
+                  showLogs()
+                  MJService.sink = { line -> runOnUiThread { logView.append(line + "\n") } }
+              }
+
+              override fun onPause() {
+                  super.onPause()
+                  MJService.sink = null
+              }
+
+              private fun showLogs() {
+                  val copy = synchronized(MJService.logs) { ArrayList(MJService.logs) }
+                  logView.text = copy.joinToString("\n")
+              }
+
+              private fun send() {
+                  val t = cmdBox.text.toString().trim()
+                  if (t.isEmpty()) return
+                  val s = MJService.instance
+                  if (s == null) {
+                      Toast.makeText(this, "Pehle Accessibility ON karein", Toast.LENGTH_LONG).show()
+                      return
+                  }
+                  cmdBox.setText("")
+                  s.runCommand(t)
+                  moveTaskToBack(true)
+              }
+          }
+          MJEOF
+          mkdir -p app/src/main/java/com/waqas/mj
+          cat > app/src/main/java/com/waqas/mj/Recorder.kt <<'MJEOF'
+          package com.waqas.mj
+
+          import android.media.AudioAttributes
+          import android.media.AudioFormat
+          import android.media.AudioRecord
+          import android.media.AudioTrack
+          import android.media.MediaRecorder
+          import java.io.ByteArrayOutputStream
+          import kotlin.math.abs
+          import kotlin.math.max
+          import kotlin.math.sqrt
+
+          /** wav = recorded sentence (null if nobody spoke). blocked = Android gave only digital silence. */
+          class Rec(val wav: ByteArray?, val blocked: Boolean)
+
+          /** True while the wake word listener holds the microphone. */
+          object MicState {
+              @Volatile
+              var wakeHolding = false
+          }
+
+          /** Records one spoken sentence (16 kHz mono) and stops by itself when the speaker goes quiet. */
+          object Recorder {
+
+              private const val RATE = 16000
+
+              /** What the last recording looked like (length and loudness), for the log. */
+              @Volatile
+              var lastInfo = ""
+
+              /** Opens a 16 kHz mono microphone, or null if Android refuses. */
+              fun open(): AudioRecord? {
+                  val minBuf = AudioRecord.getMinBufferSize(
+                      RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
+                  )
+                  if (minBuf <= 0) return null
+                  val bufBytes = max(minBuf, RATE * 2)
+                  val sources = intArrayOf(MediaRecorder.AudioSource.VOICE_RECOGNITION, MediaRecorder.AudioSource.MIC)
+                  for (src in sources) {
+                      try {
+                          val r = AudioRecord(
+                              src, RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufBytes
+                          )
+                          if (r.state == AudioRecord.STATE_INITIALIZED) return r
+                          r.release()
+                      } catch (e: Exception) {
+                      }
+                  }
+                  return null
+              }
+
+              /**
+               * onChunk (optional) gets every 100 ms of audio while recording, for example to feed an
+               * offline recogniser at the same time.
+               */
+              fun record(
+                  waitStartMs: Long,
+                  onChunk: ((ShortArray, Int) -> Unit)? = null,
+                  cancelled: () -> Boolean
+              ): Rec {
+                  val t0 = System.currentTimeMillis()
+                  while (MicState.wakeHolding && System.currentTimeMillis() - t0 < 900) Thread.sleep(30)
+
+                  val chunk = RATE / 10
+                  val r = open() ?: return Rec(null, true)
+
+                  val pcm = ByteArrayOutputStream()
+                  val buf = ShortArray(chunk)
+                  var noise = Double.MAX_VALUE
+                  var n = 0
+                  var loud = 0
+                  var quiet = 0
+                  var spoken = 0
+                  var started = false
+                  var peak = 0
+                  val waitChunks = (waitStartMs / 100).toInt()
+                  try {
+                      r.startRecording()
+                      while (!cancelled()) {
+                          val got = r.read(buf, 0, chunk)
+                          if (got < 0) break
+                          if (got == 0) continue
+
+                          var sum = 0.0
+                          for (i in 0 until got) {
+                              val s = buf[i].toInt()
+                              sum += (s * s).toDouble()
+                              peak = max(peak, abs(s))
+                              pcm.write(s and 0xFF)
+                              pcm.write((s shr 8) and 0xFF)
+                          }
+                          onChunk?.invoke(buf, got)
+                          val rms = sqrt(sum / got)
+                          n++
+
+                          if (n <= 8) noise = minOf(noise, rms)
+                          if (n == 10 && peak <= 1) return Rec(null, true)
+
+                          val floor = if (noise == Double.MAX_VALUE) 0.0 else noise
+                          val thr = max(700.0, floor * 3.0)
+                          if (n >= 3) {
+                              if (!started) {
+                                  if (rms > thr) {
+                                      loud++
+                                      if (loud >= 2) started = true
+                                  } else {
+                                      loud = 0
+                                  }
+                                  if (!started && n > waitChunks) return Rec(null, false)
+                              } else {
+                                  spoken++
+                                  if (rms < thr * 0.8) quiet++ else quiet = 0
+                                  if (quiet >= 9 || spoken > 200) break
+                              }
+                          }
+                      }
+                  } catch (e: Exception) {
+                      return Rec(null, true)
+                  } finally {
+                      try {
+                          r.stop()
+                      } catch (e: Exception) {
+                      }
+                      r.release()
+                  }
+                  if (!started || cancelled()) return Rec(null, false)
+                  val bytes = pcm.toByteArray()
+                  lastInfo = "" + (bytes.size / 32) + " ms, loudness " + peak + " (theek: 4000 se upar)"
+                  amplify(bytes, peak)
+                  return Rec(wav(bytes), false)
+              }
+
+              /** Quiet or distant speech is made louder (at most 6x) so Gemini hears it clearly. */
+              private fun amplify(b: ByteArray, peak: Int) {
+                  if (peak < 1 || peak > 12000) return
+                  val gain = minOf(6.0, 20000.0 / peak)
+                  var i = 0
+                  while (i + 1 < b.size) {
+                      val s = (b[i].toInt() and 0xFF) or (b[i + 1].toInt() shl 8)
+                      val v = (s * gain).toInt().coerceIn(-32768, 32767)
+                      b[i] = (v and 0xFF).toByte()
+                      b[i + 1] = ((v shr 8) and 0xFF).toByte()
+                      i += 2
+                  }
+              }
+
+              /** Plays a recording back, so the user can hear exactly what MJ heard. */
+              fun playWav(wav: ByteArray) {
+                  if (wav.size <= 44) return
+                  val n = wav.size - 44
+                  val t = AudioTrack.Builder()
+                      .setAudioAttributes(
+                          AudioAttributes.Builder()
+                              .setUsage(AudioAttributes.USAGE_MEDIA)
+                              .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                              .build()
+                      )
+                      .setAudioFormat(
+                          AudioFormat.Builder()
+                              .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                              .setSampleRate(RATE)
+                              .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                              .build()
+                      )
+                      .setBufferSizeInBytes(n)
+                      .setTransferMode(AudioTrack.MODE_STATIC)
+                      .build()
+                  try {
+                      t.write(wav, 44, n)
+                      t.play()
+                      Thread.sleep(n / 32L + 400L)
+                  } finally {
+                      try {
+                          t.stop()
+                      } catch (e: Exception) {
+                      }
+                      t.release()
+                  }
+              }
+
+              private fun wav(pcm: ByteArray): ByteArray {
+                  val out = ByteArrayOutputStream(pcm.size + 44)
+                  fun le32(v: Int) {
+                      out.write(v and 0xFF)
+                      out.write((v shr 8) and 0xFF)
+                      out.write((v shr 16) and 0xFF)
+                      out.write((v shr 24) and 0xFF)
+                  }
+                  fun le16(v: Int) {
+                      out.write(v and 0xFF)
+                      out.write((v shr 8) and 0xFF)
+                  }
+                  out.write("RIFF".toByteArray())
+                  le32(36 + pcm.size)
+                  out.write("WAVE".toByteArray())
+                  out.write("fmt ".toByteArray())
+                  le32(16)
+                  le16(1)
+                  le16(1)
+                  le32(RATE)
+                  le32(RATE * 2)
+                  le16(2)
+                  le16(16)
+                  out.write("data".toByteArray())
+                  le32(pcm.size)
+                  out.write(pcm)
+                  return out.toByteArray()
+              }
+          }
+          MJEOF
+          mkdir -p app/src/main/java/com/waqas/mj
+          cat > app/src/main/java/com/waqas/mj/ScreenReader.kt <<'MJEOF'
+          package com.waqas.mj
+
+          import android.view.accessibility.AccessibilityNodeInfo
+
+          /** A numbered picture of what is on screen right now. */
+          class ScreenSnapshot(
+              val text: String,
+              val nodes: List<AccessibilityNodeInfo>,
+              val hash: Int,
+              val pkg: String
+          )
+
+          object ScreenReader {
+
+              fun read(root: AccessibilityNodeInfo?): ScreenSnapshot {
+                  if (root == null) return ScreenSnapshot("(screen not readable)", emptyList(), 0, "")
+                  val nodes = ArrayList<AccessibilityNodeInfo>()
+                  val sb = StringBuilder()
+                  walk(root, nodes, sb)
+                  val body = if (sb.isEmpty()) "(empty screen)" else sb.toString()
+                  return ScreenSnapshot(body, nodes, body.hashCode(), root.packageName?.toString() ?: "")
+              }
+
+              private fun walk(n: AccessibilityNodeInfo?, nodes: ArrayList<AccessibilityNodeInfo>, sb: StringBuilder) {
+                  if (n == null || nodes.size >= 60 || !n.isVisibleToUser) return
+                  val label = (n.text?.toString() ?: n.contentDescription?.toString() ?: n.hintText?.toString() ?: "").trim()
+                  val keep = n.isClickable || n.isEditable || n.isScrollable || n.isCheckable || label.isNotEmpty()
+                  if (keep) {
+                      val kind = when {
+                          n.isEditable -> "input"
+                          n.isClickable -> "button"
+                          n.isScrollable -> "scroll"
+                          else -> "text"
+                      }
+                      sb.append('[').append(nodes.size).append("] ").append(kind)
+                      if (label.isNotEmpty()) {
+                          sb.append(" \"").append(label.take(40).replace("\n", " ")).append('"')
+                      }
+                      if (n.isChecked) sb.append(" (checked)")
+                      sb.append('\n')
+                      nodes.add(n)
+                  }
+                  for (i in 0 until n.childCount) {
+                      walk(n.getChild(i), nodes, sb)
+                  }
+              }
+          }
+          MJEOF
+          mkdir -p app/src/main/java/com/waqas/mj
+          cat > app/src/main/java/com/waqas/mj/VoskHelper.kt <<'MJEOF'
+          package com.waqas.mj
+
+          import android.content.Context
+          import android.net.Uri
+          import org.json.JSONObject
+          import org.vosk.LibVosk
+          import org.vosk.LogLevel
+          import org.vosk.Model
+          import org.vosk.Recognizer
+          import java.io.BufferedInputStream
+          import java.io.File
+          import java.io.FileOutputStream
+          import java.util.zip.ZipInputStream
+
+          /**
+           * Collects what Vosk recognises while audio is being recorded.
+           * Vosk works on its own thread, so a slow phone can never make the recorder lose audio.
+           */
+          class VoskSession(private val rec: Recognizer) {
+              private val sb = StringBuilder()
+              private val q = java.util.concurrent.LinkedBlockingQueue<ShortArray>()
+              private val worker = Thread {
+                  try {
+                      while (true) {
+                          val b = q.take()
+                          if (b.isEmpty()) break
+                          if (rec.acceptWaveForm(b, b.size)) {
+                              val t = VoskHelper.text(rec.getResult())
+                              if (t.isNotEmpty()) sb.append(t).append(' ')
+                          }
+                      }
+                  } catch (e: Exception) {
+                  }
+              }
+
+              init {
+                  worker.start()
+              }
+
+              fun feed(buf: ShortArray, n: Int) {
+                  q.offer(buf.copyOf(n))
+              }
+
+              fun finish(): String {
+                  q.offer(ShortArray(0))
+                  try {
+                      worker.join(5000)
+                  } catch (e: InterruptedException) {
+                  }
+                  if (worker.isAlive) return sb.toString().trim()
+                  try {
+                      val t = VoskHelper.text(rec.getFinalResult())
+                      if (t.isNotEmpty()) sb.append(t)
+                  } catch (e: Exception) {
+                  }
+                  try {
+                      rec.close()
+                  } catch (e: Exception) {
+                  }
+                  return sb.toString().trim()
+              }
+          }
+
+          /** Offline speech recognition (Vosk Hindi model that the user picked from the phone). */
+          object VoskHelper {
+
+              @Volatile
+              private var model: Model? = null
+
+              private fun path(ctx: Context): String? {
+                  val p = ctx.getSharedPreferences("mj", Context.MODE_PRIVATE).getString("voskPath", "") ?: ""
+                  return if (p.isNotBlank() && File(p, "am").isDirectory) p else null
+              }
+
+              fun hasModel(ctx: Context): Boolean = path(ctx) != null
+
+              @Synchronized
+              fun load(ctx: Context): Model? {
+                  val m = model
+                  if (m != null) return m
+                  val p = path(ctx) ?: return null
+                  return try {
+                      LibVosk.setLogLevel(LogLevel.WARNINGS)
+                      val nm = Model(p)
+                      model = nm
+                      nm
+                  } catch (e: Throwable) {
+                      null
+                  }
+              }
+
+              fun newRecognizer(ctx: Context): Recognizer? {
+                  val m = load(ctx) ?: return null
+                  return try {
+                      Recognizer(m, 16000.0f)
+                  } catch (e: Throwable) {
+                      null
+                  }
+              }
+
+              fun session(ctx: Context): VoskSession? {
+                  val r = newRecognizer(ctx) ?: return null
+                  return VoskSession(r)
+              }
+
+              fun text(json: String): String = try {
+                  JSONObject(json).optString("text", "").trim()
+              } catch (e: Exception) {
+                  ""
+              }
+
+              fun partial(json: String): String = try {
+                  JSONObject(json).optString("partial", "").trim()
+              } catch (e: Exception) {
+                  ""
+              }
+
+              /** Unzips the chosen model zip into the app's own storage and remembers where it is. */
+              fun install(ctx: Context, uri: Uri, progress: (String) -> Unit): String {
+                  val base = File(ctx.filesDir, "vosk-model")
+                  try {
+                      base.deleteRecursively()
+                      base.mkdirs()
+                      model?.close()
+                      model = null
+                      val input = ctx.contentResolver.openInputStream(uri) ?: return "File khul nahi saki"
+                      var count = 0
+                      ZipInputStream(BufferedInputStream(input)).use { zin ->
+                          var e = zin.nextEntry
+                          while (e != null) {
+                              val out = File(base, e.name)
+                              val safe = out.canonicalPath.startsWith(base.canonicalPath + File.separator)
+                              if (safe) {
+                                  if (e.isDirectory) {
+                                      out.mkdirs()
+                                  } else {
+                                      out.parentFile?.mkdirs()
+                                      FileOutputStream(out).use { o -> zin.copyTo(o) }
+                                      count++
+                                      if (count % 15 == 0) progress("Model copy ho raha hai... ($count files)")
+                                  }
+                              }
+                              zin.closeEntry()
+                              e = zin.nextEntry
+                          }
+                      }
+                      val root = findRoot(base, 0)
+                          ?: return "Zip ke andar model folder nahi mila (am/conf folders chahiye). Sahi Vosk Hindi model ki zip chunein"
+                      ctx.getSharedPreferences("mj", Context.MODE_PRIVATE)
+                          .edit().putString("voskPath", root.absolutePath).apply()
+                      return "Vosk model lag gaya ($count files)"
+                  } catch (e: Throwable) {
+                      return "Model lagane mein error: ${e.message}"
+                  }
+              }
+
+              private fun findRoot(dir: File, depth: Int): File? {
+                  if (File(dir, "am").isDirectory && File(dir, "conf").isDirectory) return dir
+                  if (depth >= 3) return null
+                  val kids = dir.listFiles() ?: return null
+                  for (k in kids) {
+                      if (k.isDirectory) {
+                          val r = findRoot(k, depth + 1)
+                          if (r != null) return r
+                      }
+                  }
+                  return null
+              }
+
+              /** Listens for a few seconds and shows what Vosk wrote, so the wake word can be tuned. */
+              fun test(ctx: Context, seconds: Int, out: (String) -> Unit) {
+                  if (MicState.wakeHolding) {
+                      out("Pehle Wake word OFF karke Save karein, phir test karein")
+                      return
+                  }
+                  val s = session(ctx)
+                  if (s == null) {
+                      out("Vosk model nahi mila ya load nahi hua")
+                      return
+                  }
+                  val r = Recorder.open()
+                  if (r == null) {
+                      s.finish()
+                      out("Mic nahi khula")
+                      return
+                  }
+                  try {
+                      r.startRecording()
+                      out("Vosk test: $seconds second bolein...")
+                      val buf = ShortArray(1600)
+                      val end = System.currentTimeMillis() + seconds * 1000L
+                      while (System.currentTimeMillis() < end) {
+                          val got = r.read(buf, 0, buf.size)
+                          if (got < 0) break
+                          if (got > 0) s.feed(buf, got)
+                      }
+                  } catch (e: Exception) {
+                      out("Vosk test error: ${e.message}")
+                  } finally {
+                      try {
+                          r.stop()
+                      } catch (e: Exception) {
+                      }
+                      r.release()
+                  }
+                  val t = s.finish()
+                  out("Vosk ne suna: " + (if (t.isEmpty()) "(kuch nahi)" else t))
+              }
+          }
+          MJEOF
+          mkdir -p app/src/main/java/com/waqas/mj
+          cat > app/src/main/java/com/waqas/mj/WakeService.kt <<'MJEOF'
+          package com.waqas.mj
+
+          import android.app.Notification
+          import android.app.NotificationChannel
+          import android.app.NotificationManager
+          import android.app.PendingIntent
+          import android.app.Service
+          import android.content.Context
+          import android.content.Intent
+          import android.content.pm.ServiceInfo
+          import android.os.Build
+          import android.os.IBinder
+          import org.vosk.Recognizer
+
+          /**
+           * Always-listening wake word. A foreground service (so Android keeps the microphone open)
+           * runs Vosk offline. When the wake word is heard it frees the microphone and starts a normal
+           * MJ conversation, then goes back to listening.
+           */
+          class WakeService : Service() {
+
+              companion object {
+                  private const val CHANNEL = "mjwake"
+                  private const val NOTIF_ID = 17
+                  const val DEFAULT_WORDS = "एम जे, एमजे"
+              }
+
+              @Volatile
+              private var running = false
+
+              override fun onBind(intent: Intent?): IBinder? = null
+
+              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  if (intent?.action == "STOP") {
+                      getSharedPreferences("mj", Context.MODE_PRIVATE).edit().putBoolean("wake", false).apply()
+                      running = false
+                      stopSelf()
+                      return START_NOT_STICKY
+                  }
+                  try {
+                      startAsForeground()
+                  } catch (e: Exception) {
+                      log("Wake service start nahi hui: ${e.message}")
+                      stopSelf()
+                      return START_NOT_STICKY
+                  }
+                  if (!running) {
+                      running = true
+                      Thread { loop() }.start()
+                  }
+                  return START_STICKY
+              }
+
+              override fun onDestroy() {
+                  running = false
+                  super.onDestroy()
+              }
+
+              private fun startAsForeground() {
+                  val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                  nm.createNotificationChannel(
+                      NotificationChannel(CHANNEL, "MJ wake word", NotificationManager.IMPORTANCE_LOW)
+                  )
+                  val open = PendingIntent.getActivity(
+                      this, 0, Intent(this, MainActivity::class.java),
+                      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                  )
+                  val stop = PendingIntent.getService(
+                      this, 1, Intent(this, WakeService::class.java).setAction("STOP"),
+                      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                  )
+                  val n = Notification.Builder(this, CHANNEL)
+                      .setContentTitle("MJ sun rahi hai")
+                      .setContentText("Wake word bol kar bulayein")
+                      .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                      .setContentIntent(open)
+                      .setOngoing(true)
+                      .addAction(Notification.Action.Builder(android.R.drawable.ic_media_pause, "Band karein", stop).build())
+                      .build()
+                  if (Build.VERSION.SDK_INT >= 29) {
+                      startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                  } else {
+                      startForeground(NOTIF_ID, n)
+                  }
+              }
+
+              private fun log(s: String) {
+                  synchronized(MJService.logs) {
+                      MJService.logs.add(s)
+                      if (MJService.logs.size > 200) MJService.logs.removeAt(0)
+                  }
+                  MJService.sink?.invoke(s)
+              }
+
+              private fun words(): List<String> {
+                  val raw = getSharedPreferences("mj", Context.MODE_PRIVATE).getString("wakeWords", DEFAULT_WORDS)
+                      ?: DEFAULT_WORDS
+                  return raw.split(",").map { squash(it) }.filter { it.isNotEmpty() }
+              }
+
+              private fun squash(s: String): String = s.lowercase().replace(Regex("[\\s.,!?।]"), "")
+
+              private fun loop() {
+                  log("Wake word sun rahi hai")
+                  while (running) {
+                      val svc = MJService.instance
+                      if (svc == null || svc.isBusy()) {
+                          Thread.sleep(500)
+                          continue
+                      }
+                      val rec = VoskHelper.newRecognizer(this)
+                      if (rec == null) {
+                          log("Wake word ke liye Vosk model nahi mila")
+                          Thread.sleep(4000)
+                          continue
+                      }
+                      val hit = listen(rec, words())
+                      try {
+                          rec.close()
+                      } catch (e: Exception) {
+                      }
+                      if (hit && running) {
+                          log("Wake word suna")
+                          svc.startConversation()
+                          Thread.sleep(800)
+                          while (running && svc.isBusy()) Thread.sleep(400)
+                          Thread.sleep(600)
+                      } else {
+                          Thread.sleep(300)
+                      }
+                  }
+                  log("Wake word band")
+              }
+
+              /** Returns true when a wake word was heard. */
+              private fun listen(rec: Recognizer, wake: List<String>): Boolean {
+                  if (wake.isEmpty()) return false
+                  val r = Recorder.open() ?: return false
+                  MicState.wakeHolding = true
+                  try {
+                      r.startRecording()
+                      val buf = ShortArray(1600)
+                      while (running) {
+                          val svc = MJService.instance
+                          if (svc == null || svc.isBusy()) return false
+                          val got = r.read(buf, 0, buf.size)
+                          if (got < 0) return false
+                          if (got == 0) continue
+                          val isFinal = rec.acceptWaveForm(buf, got)
+                          val txt = if (isFinal) VoskHelper.text(rec.getResult()) else VoskHelper.partial(rec.getPartialResult())
+                          if (txt.isNotEmpty()) {
+                              val s = squash(txt)
+                              if (wake.any { s.contains(it) }) return true
+                          }
+                      }
+                  } catch (e: Exception) {
+                      return false
+                  } finally {
+                      try {
+                          r.stop()
+                      } catch (e: Exception) {
+                      }
+                      r.release()
+                      MicState.wakeHolding = false
+                  }
+                  return false
+              }
+          }
+          MJEOF
+          mkdir -p app/src/main/res/values
+          cat > app/src/main/res/values/strings.xml <<'MJEOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <string name="app_name">MJ</string>
+              <string name="service_desc">MJ aap ke kehne par screen padhti hai aur tap, type, scroll jaise kaam karti hai.</string>
+          </resources>
+          MJEOF
+          mkdir -p app/src/main/res/xml
+          cat > app/src/main/res/xml/accessibility_config.xml <<'MJEOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:accessibilityEventTypes="typeWindowStateChanged"
+              android:accessibilityFeedbackType="feedbackGeneric"
+              android:accessibilityFlags="flagRetrieveInteractiveWindows|flagIncludeNotImportantViews|flagReportViewIds"
+              android:canPerformGestures="true"
+              android:canTakeScreenshot="true"
+              android:canRetrieveWindowContent="true"
+              android:notificationTimeout="100"
+              android:description="@string/service_desc" />
+          MJEOF
+          cat > build.gradle.kts <<'MJEOF'
+          plugins {
+              id("com.android.application") version "8.5.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+          }
+          MJEOF
+          cat > gradle.properties <<'MJEOF'
+          org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          kotlin.code.style=official
+          MJEOF
+          cat > settings.gradle.kts <<'MJEOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "MJ"
+          include(":app")
+          MJEOF
+          base64 -d app/mj.keystore.b64 > app/mj.keystore
+          echo 'project written:' && find . -type f -not -path './.git/*' | head -50
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Keep APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MJ-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish APK in Releases (direct download)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mj-build-${{ github.run_number }}
+          name: MJ build ${{ github.run_number }}
+          files: app/build/outputs/apk/debug/app-debug.apk
