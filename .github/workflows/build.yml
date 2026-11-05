@@ -44,8 +44,8 @@ jobs:
                   applicationId = "com.waqas.mj"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 12
-                  versionName = "1.7.1"
+                  versionCode = 13
+                  versionName = "1.8"
               }
 
               // One fixed key for every build, so a new APK installs over the old one.
@@ -183,7 +183,15 @@ jobs:
           - tasks: only for mode tasks. A list of SEPARATE phone tasks in the order he said them. One short plain English sentence each, with exact app names and search words, for example ["Open YouTube", "Play the song Tere Naam on YouTube", "Set volume to full", "Call Zameer", "Send SMS to Zameer saying Salam"]. Open a person's chat as "Open Zameer's WhatsApp chat". Each task must be about ONE goal only. Never merge two apps or two unrelated goals into one task. Never invent tasks. Steps that depend on each other (take a photo THEN send that photo; find a message THEN react to it; open a chat THEN send a voice note) must stay in ONE task written as one sentence, because a later task cannot see what an earlier one did. Do not add a separate task that only opens an app when a later task already opens it (opening a person's WhatsApp chat opens WhatsApp itself).
           - reply: a short natural answer in Roman Urdu (Latin letters) for the screen.
             For mode tasks the reply is ONLY a short acknowledgement such as Ji, abhi karti hoon. It must NEVER say that anything is already done, never describe a result, never promise something you cannot do, and never say goodbye. The work has not happened yet when this reply is spoken.
+          - remember: optional. If he asks you to remember, keep or note something (yaad rakho, note kar lo), put it here as one short plain sentence (for example "Ammi's number is 0300..."). Otherwise leave it empty.
           - speak: the same reply written in Hindi Devanagari so a Hindi voice can say it. Spell Urdu and Islamic words properly (क़ुरान, अल्लाह, अस्सलामु अलैकुम, शुक्रिया, नमाज़). No emoji.
+
+          You are given THINGS TO REMEMBER and RECENT WORK (what you did earlier, with DONE or NOT DONE). Use them:
+          - If he asks what you did, whether something was done, or says "check karo / kya hua / jo abhi bola wo kiya": answer honestly in mode chat from RECENT WORK. NOT DONE means it did not happen.
+          - If he says to do the earlier work again or finish it ("peeche wala kaam karo", "jo adhoora tha"), make tasks from the NOT DONE items of RECENT WORK, written in full so nothing needs the old context.
+          - If he asks you to check something on the phone now (is the message sent, is the song playing), make ONE task: "Check on the screen whether <that thing> is done and tell me what you see".
+          - Never say you have no earlier task when RECENT WORK lists one.
+          - A phone number is used only if he gave ALL digits (10 or more); otherwise give only the name.
 
           How MJ talks: like a close, kind friend. Warm, natural, one to three short sentences, never robotic and never like a manual. Notice his feeling first: if he is sad, tired, worried or happy, respond to that. Use his name only now and then. Never call him Boss, sir or any title.
           If he says i love you or something affectionate, answer with warmth and gratitude as a caring friend and helper, and say you are always here to help him. You are an AI assistant, not a person and not a romantic partner, so do not claim to love him back and do not promise to be everything for him. Stay gentle and honest.
@@ -330,6 +338,7 @@ jobs:
                       .put("tasks", JSONObject().put("type", "ARRAY").put("items", str()))
                       .put("reply", str())
                       .put("speak", str())
+                      .put("remember", str())
                   return JSONObject()
                       .put("type", "OBJECT")
                       .put("properties", props)
@@ -368,11 +377,13 @@ jobs:
                   wav: ByteArray?,
                   text: String?,
                   fromMic: Boolean,
-                  chat: List<String>
+                  chat: List<String>,
+                  memory: String
               ): JSONObject {
                   val parts = JSONArray()
                   if (wav != null) parts.put(audioPart(wav))
                   val p = buildString {
+                      append(memory).append("\n")
                       append("EARLIER CONVERSATION (oldest first):\n")
                       if (chat.isEmpty()) {
                           append("(none)\n")
@@ -420,6 +431,19 @@ jobs:
                   parts.put(JSONObject().put("text", q))
                   val r = post(key, model, "You pick which option a person chose. Output only JSON.", parts, choiceSchema())
                   return r.optInt("choice", 0)
+              }
+
+              /** After the model says done: does the screen really show that the task is finished? */
+              fun verify(key: String, model: String, task: String, claimed: String, actions: List<String>, snap: ScreenSnapshot): Boolean {
+                  val q = "TASK: " + task + "\nWHAT MJ CLAIMS: " + claimed + "\nACTIONS TAKEN:\n" +
+                      actions.takeLast(8).joinToString("\n") { "- $it" } +
+                      "\nCURRENT APP: " + snap.pkg + "\nSCREEN ELEMENTS:\n" + snap.text +
+                      "\nDoes the screen (or the action results) really show that the task is finished? " +
+                      "Judge only from evidence. A message in the box but not sent is not finished. " +
+                      "A search page is not a playing video. Answer with JSON {\"yes\": true or false}."
+                  val parts = JSONArray().put(JSONObject().put("text", q))
+                  val r = post(key, model, "You are a strict checker of phone tasks. Output only JSON.", parts, yesSchema())
+                  return r.optBoolean("yes", false)
               }
 
               /** A vision answer about a screenshot. */
@@ -513,16 +537,21 @@ jobs:
               ): JSONObject {
                   var useSchema = schema != null
                   var last: Exception? = null
+                  var useModel = model
                   for (attempt in 0..3) {
                       if (aborted) throw RuntimeException("roka gaya")
                       try {
-                          return postOnce(key, model, system, parts, if (useSchema) schema else null)
+                          return postOnce(key, useModel, system, parts, if (useSchema) schema else null)
                       } catch (e: SchemaRejected) {
                           useSchema = false
                           last = e
                       } catch (e: Retry) {
                           last = e
                           onLog?.invoke("Net/AI dobara koshish ${attempt + 1}: ${e.message}")
+                          if (attempt >= 1 && useModel == model) {
+                              useModel = if (model.contains("lite")) "gemini-flash-latest" else "gemini-flash-lite-latest"
+                              onLog?.invoke("Doosra model try kar rahi hoon: $useModel")
+                          }
                           Thread.sleep(500L * (attempt + 1))
                       } catch (e: java.io.IOException) {
                           if (aborted) throw RuntimeException("roka gaya")
@@ -1290,6 +1319,8 @@ jobs:
                       "delete|remove|erase|uninstall|format|factory|reset|unsend|\\bpay\\b|send money|transfer|purchase|\\bbuy\\b"
                   )
 
+                  private val AUTO = setOf("call_contact", "send_sms", "share_latest", "alarm", "timer", "call")
+
                   private val ONCE = setOf(
                       "youtube_search", "web_search", "maps", "whatsapp_chat", "call_contact",
                       "send_sms", "share_latest", "call", "alarm", "timer"
@@ -1630,7 +1661,7 @@ jobs:
 
                   val history = synchronized(chat) { ArrayList(chat) }
                   val u = try {
-                      Brain.understand(key, model, name, wav, text, fromMic, history)
+                      Brain.understand(key, model, name, wav, text, fromMic, history, Memory.context(this))
                   } catch (e: Exception) {
                       finish("AI error: ${e.message}")
                       return false
@@ -1641,6 +1672,11 @@ jobs:
                   val heard = u.optString("heard").ifBlank { text ?: "" }
                   val mode = u.optString("mode")
                   val reply = u.optString("reply").ifBlank { "Ji" }
+                  val remember = u.optString("remember").trim()
+                  if (remember.isNotEmpty()) {
+                      Memory.addNote(this, remember)
+                      emit("Yaad rakh liya: $remember")
+                  }
                   val spoken = u.optString("speak").ifBlank { reply }
                   if (wav != null) emit("Suna (Gemini ne awaaz se): $heard")
                   else if (fromMic) emit("Suna (Google mic se): $heard")
@@ -1687,6 +1723,7 @@ jobs:
                   quietNow = QUIET.containsMatchIn((heard + " " + tasks.joinToString(" ")).lowercase())
                   emit("MJ: $reply")
                   setStatus(reply)
+                  addChat("MJ: kaam shuru kiye: " + tasks.joinToString(" | "))
                   if (!quietNow) speak(spoken, false)
 
                   val results = ArrayList<TaskResult>()
@@ -1696,9 +1733,12 @@ jobs:
                       setStatus("Kaam ${i + 1}/${tasks.size}: $t")
                       val before = results.mapIndexed { j, r -> tasks[j] + " -> " + r.msg }
                       val after = tasks.drop(i + 1)
-                      results.add(runTask(t, heard, key, agentModel, before, after))
+                      val tr = runTask(t, heard, key, agentModel, before, after)
+                      results.add(tr)
+                      Memory.addWork(this, t, tr.ok && !cancelled, tr.msg)
                   }
                   if (cancelled) {
+                      for (j in results.size until tasks.size) Memory.addWork(this, tasks[j], false, "roka gaya, shuru nahi hua")
                       finish("Roka gaya (stopped)")
                       return false
                   }
@@ -1793,6 +1833,18 @@ jobs:
                               if (wantsPlay && snap.pkg.contains("youtube") && !proof) okDone = false
                               else if (last.startsWith("tap") && last.contains("screen did not change")) okDone = false
                           }
+                          val uiWork = history.any { it.startsWith("tap") || it.startsWith("type") || it.startsWith("enter") || it.startsWith("hold") || it.startsWith("long_press") }
+                          if (okDone && uiWork && !history.any { it.contains("SCREEN ANSWER") }) {
+                              setStatus("$task: check kar rahi hoon...")
+                              val real = try {
+                                  Brain.verify(key, model, task, m, history, snap)
+                              } catch (e: Exception) {
+                                  true
+                              }
+                              if (!real) {
+                                  return TaskResult(false, "Pakka nahi ke '$task' poora hua: screen par saboot nahi dikha, aap ek nazar dekh lein", "मुझे पक्का नहीं कि काम पूरा हुआ, आप एक नज़र देख लीजिए।")
+                              }
+                          }
                           if (!okDone && args.optBoolean("ok", true)) {
                               return TaskResult(false, "Pakka nahi ke '$task' hua ya nahi: screen par saboot nahi dikha, aap ek nazar dekh lein", "मुझे पक्का नहीं कि काम हुआ या नहीं, आप एक नज़र देख लीजिए।")
                           }
@@ -1874,6 +1926,11 @@ jobs:
                       val result = execute(action, args, snap, request)
                       lastResult = result
                       history.add("$action $args -> $result")
+                      val autoDone = action in AUTO || (action == "whatsapp_chat" && args.optString("text").isNotBlank())
+                      if (autoDone && !result.contains("BLOCKED")) {
+                          val ok = !failed(result)
+                          return TaskResult(ok, if (ok) "Ho gaya ($result)" else result, if (ok) "हो गया।" else "")
+                      }
                       prevUi = action == "tap" || action == "type" || action == "scroll" || action == "enter"
                       prevHash = snap.hash
                       settle(action)
@@ -1961,7 +2018,11 @@ jobs:
               private fun contactAction(a: JSONObject, kind: String): String {
                   val name = a.optString("name").trim()
                   var number = a.optString("number").trim()
+                  if (number.filter { it.isDigit() }.length < 7) number = ""
                   val text = a.optString("text")
+                  if (kind == "share" && Regex("view once|view-once|ek baar|एक बार").containsMatchIn(text.lowercase())) {
+                      return "view once abhi MJ se nahi lag sakta, isliye bheji nahi; normal photo ke liye 'normal bhejo' bolein"
+                  }
                   var shown = name
                   if (number.isEmpty()) {
                       if (name.isEmpty()) return "contact ka naam nahi diya"
@@ -2892,6 +2953,91 @@ jobs:
                   cmdBox.setText("")
                   s.runCommand(t)
                   moveTaskToBack(true)
+              }
+          }
+          MJEOF
+          mkdir -p app/src/main/java/com/waqas/mj
+          cat > app/src/main/java/com/waqas/mj/Memory.kt <<'MJEOF'
+          package com.waqas.mj
+
+          import android.content.Context
+          import org.json.JSONArray
+          import org.json.JSONObject
+          import java.text.SimpleDateFormat
+          import java.util.Date
+          import java.util.Locale
+
+          /** MJ's memory on the phone: what she did recently and things Waqas asked her to remember. */
+          object Memory {
+
+              private fun prefs(ctx: Context) = ctx.getSharedPreferences("mjmem", Context.MODE_PRIVATE)
+
+              @Synchronized
+              fun addWork(ctx: Context, task: String, ok: Boolean, result: String) {
+                  val arr = try {
+                      JSONArray(prefs(ctx).getString("work", "[]"))
+                  } catch (e: Exception) {
+                      JSONArray()
+                  }
+                  val e = JSONObject()
+                      .put("t", SimpleDateFormat("d MMM HH:mm", Locale.ENGLISH).format(Date()))
+                      .put("task", task.take(160))
+                      .put("ok", ok)
+                      .put("result", result.take(160))
+                  arr.put(e)
+                  val out = JSONArray()
+                  for (i in maxOf(0, arr.length() - 20) until arr.length()) out.put(arr.get(i))
+                  prefs(ctx).edit().putString("work", out.toString()).apply()
+              }
+
+              @Synchronized
+              fun addNote(ctx: Context, note: String) {
+                  val n = note.trim().take(200)
+                  if (n.isEmpty()) return
+                  val arr = try {
+                      JSONArray(prefs(ctx).getString("notes", "[]"))
+                  } catch (e: Exception) {
+                      JSONArray()
+                  }
+                  for (i in 0 until arr.length()) if (arr.optString(i) == n) return
+                  arr.put(n)
+                  val out = JSONArray()
+                  for (i in maxOf(0, arr.length() - 40) until arr.length()) out.put(arr.get(i))
+                  prefs(ctx).edit().putString("notes", out.toString()).apply()
+              }
+
+              @Synchronized
+              fun forgetNotes(ctx: Context) {
+                  prefs(ctx).edit().remove("notes").apply()
+              }
+
+              /** Text given to the AI so it knows what happened before and what to remember. */
+              @Synchronized
+              fun context(ctx: Context): String {
+                  val sb = StringBuilder()
+                  sb.append("NOW: ").append(SimpleDateFormat("EEEE d MMM yyyy, HH:mm", Locale.ENGLISH).format(Date())).append("\n")
+                  val notes = try {
+                      JSONArray(prefs(ctx).getString("notes", "[]"))
+                  } catch (e: Exception) {
+                      JSONArray()
+                  }
+                  sb.append("THINGS TO REMEMBER (he asked you to keep these):\n")
+                  if (notes.length() == 0) sb.append("(none)\n")
+                  for (i in 0 until notes.length()) sb.append("- ").append(notes.optString(i)).append("\n")
+                  val work = try {
+                      JSONArray(prefs(ctx).getString("work", "[]"))
+                  } catch (e: Exception) {
+                      JSONArray()
+                  }
+                  sb.append("RECENT WORK DONE BY YOU (oldest first, newest last):\n")
+                  if (work.length() == 0) sb.append("(none)\n")
+                  for (i in maxOf(0, work.length() - 10) until work.length()) {
+                      val w = work.getJSONObject(i)
+                      sb.append("- ").append(w.optString("t")).append(" | ").append(w.optString("task"))
+                          .append(" | ").append(if (w.optBoolean("ok")) "DONE" else "NOT DONE").append(": ")
+                          .append(w.optString("result")).append("\n")
+                  }
+                  return sb.toString()
               }
           }
           MJEOF
